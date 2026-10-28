@@ -476,7 +476,7 @@ private struct DemoFrame: View {
             .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(panelOpen ? 0.22 : 0)))
             Image(systemName: "wifi").font(.system(size: 24)).frame(width: 64)
             Image(systemName: "battery.75percent").font(.system(size: 27)).frame(width: 72)
-            Text(Date.now.formatted(.dateTime.weekday(.abbreviated).hour().minute()))   // matches the 3D Mac's screen
+            Text(Demo.now.formatted(.dateTime.weekday(.abbreviated).hour().minute()))   // matches the 3D Mac's screen
                 .font(.system(size: 26))
                 .frame(width: 230, alignment: .trailing)
         }

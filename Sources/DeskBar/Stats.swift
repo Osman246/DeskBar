@@ -165,13 +165,51 @@ final class Stats: NSObject, ObservableObject, CLLocationManagerDelegate {
         if let storage = slow.storage { self.storage = storage }
         if let volumes = slow.volumes { self.volumes = volumes }
         recordHistory()
+        if Demo.on { applyDemo() }
         onRefresh?(self)
+    }
+
+    /// Believable made-up readings for screenshots and the demo video, so nothing from this Mac shows.
+    private func applyDemo() {
+        let gb: UInt64 = 1_000_000_000
+        battery = Battery(percent: 86, charging: false, onPower: false, minutesLeft: 412)
+        wifi = WiFi(on: true, name: "Studio", linkMbps: 1200, signal: -52)
+        pingMs = 18
+        cpuPercent = 12
+        cpuTemp = 42
+        coreUsage = [22, 18, 15, 12, 9, 7, 6, 4, 3, 2]
+        gpuPercent = 3
+        fans = []
+        thermal = .nominal
+        memory = Readers.Memory(used: 98 * gb / 10, total: 16 * gb, pressure: .normal, app: 61 * gb / 10,
+                                wired: 22 * gb / 10, compressed: 8 * gb / 10, cached: 31 * gb / 10)
+        storage = (free: 214_000_000_000, total: 494_000_000_000)
+        volumes = [Readers.Volume(url: URL(fileURLWithPath: "/"), name: "Macintosh HD", free: 214_000_000_000,
+                                  total: 494_000_000_000, purgeable: 18_000_000_000, isInternal: true, ejectable: false)]
+        diskRead = 420_000
+        diskWrite = 96_000
+        download = 1_250_000
+        upload = 180_000
+        power = Readers.Power(systemWatts: 6.8, chargerWatts: nil, chargerName: nil, cycles: 112, health: 96, batteryTemp: 31)
+        topApp = TopAppTracker.TopApp(name: "Safari", percent: 18, app: nil)
+        memoryUsers = [("Safari", 21), ("Xcode", 18), ("Final Cut Pro", 12), ("Music", 4)].enumerated().map { i, user in
+            TopAppTracker.MemoryUser(name: user.0, bytes: UInt64(user.1) * gb / 10, app: nil, pid: pid_t(9000 + i))
+        }
+        cpuUsers = [("Safari", 18.0, 0.4), ("Xcode", 12.0, 0.3), ("Final Cut Pro", 8.0, 0.2)].enumerated().map { i, user in
+            TopAppTracker.CPUUser(name: user.0, percent: user.1, share: user.2, app: nil, pid: pid_t(9000 + i))
+        }
+        ports = []
+        micInUse = false
+        cameraInUse = false
+        camerasInUse = []
+        bluetooth = []
+        bootTime = Date().addingTimeInterval(-3 * 86_400)   // "up 3 days"
     }
 
 
     func refreshNetwork() async {
         async let ping = Self.ping()
-        pingMs = await ping
+        pingMs = Demo.on ? 18 : await ping
         vpn = Readers.vpnActive()
     }
 
@@ -179,7 +217,7 @@ final class Stats: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var lastIPNetwork: String?
 
     func refreshSlow() async {
-        bluetooth = await Readers.bluetooth()
+        bluetooth = Demo.on ? [] : await Readers.bluetooth()
         // Public IP every 10 minutes, or straight away after switching networks.
         if Date().timeIntervalSince(lastIPCheck) > 600 || wifi.name != lastIPNetwork {
             lastIPCheck = Date()

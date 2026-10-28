@@ -692,9 +692,9 @@ final class MacScene: ObservableObject {
         let formatter = DateFormatter()
         formatter.locale = .autoupdatingCurrent
         formatter.setLocalizedDateFormatFromTemplate("jmm")
-        let time = formatter.string(from: Date())
+        let time = formatter.string(from: Demo.now)
             .replacingOccurrences(of: #"\s?[AaPp]\.?[Mm]\.?"#, with: "", options: .regularExpression)
-        return (time, Date().formatted(.dateTime.weekday(.wide).day().month(.wide)))
+        return (time, Demo.now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
     }
 
     // MARK: Lid
@@ -917,9 +917,9 @@ final class MacScene: ObservableObject {
         let formatter = DateFormatter()
         formatter.locale = .autoupdatingCurrent
         formatter.setLocalizedDateFormatFromTemplate("jmm")
-        let time = formatter.string(from: Date())
+        let time = formatter.string(from: Demo.now)
             .replacingOccurrences(of: #"\s?[AaPp]\.?[Mm]\.?"#, with: "", options: .regularExpression)
-        let date = Date().formatted(.dateTime.weekday(.wide).day().month(.wide))
+        let date = Demo.now.formatted(.dateTime.weekday(.wide).day().month(.wide))
         let view = ZStack {
             LinearGradient(colors: [Color(red: 0.10, green: 0.11, blue: 0.16), Color(red: 0.03, green: 0.03, blue: 0.05)],
                            startPoint: .top, endPoint: .bottom)

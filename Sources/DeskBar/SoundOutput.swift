@@ -29,7 +29,7 @@ final class SoundOutput: ObservableObject {
             return Device(id: id, name: name, icon: Self.icon(transport, name: name))
         }
         if let level = Self.volume(of: current) {
-            volume = level
+            volume = Demo.on ? 0.5 : level
             hasVolume = true
         } else {
             hasVolume = false

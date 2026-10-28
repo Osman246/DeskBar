@@ -20,6 +20,12 @@ enum Snapshot {
             try? await Task.sleep(for: .seconds(24))
             model.display.refresh()
             model.sound.refresh()
+            if Demo.on {
+                // Made-up volume and speed test for shareable screenshots (not saved).
+                model.sound.volume = 0.5
+                model.speedTest.results = [SpeedTest.Result(date: Date().addingTimeInterval(-7200), downMbps: 412, upMbps: 38,
+                                                            pingMs: 14, network: nil)]
+            }
             if CommandLine.arguments.contains("--flat") {
                 // A new install: no 3D model yet (run with DESKBAR_NO_MODEL=1).
                 model.mac.loadIfNeeded()
@@ -57,7 +63,7 @@ enum Snapshot {
                     HistoryStore.shared.record(sample, apps: [("Final Cut Pro", 4 + 70 * spike), ("Safari", 8), ("Xcode", 5), ("Music", 1.5)])
                 }
                 try? await Task.sleep(for: .seconds(2))
-                model.stats.volumes = Readers.volumes()
+                if !Demo.on { model.stats.volumes = Readers.volumes() }
                 let deskStill = MacScene(size: CGSize(width: 880, height: 440))
                 deskStill.playsIntro = false
                 await deskStill.waitUntilLoaded()
