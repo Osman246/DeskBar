@@ -2,7 +2,7 @@ import AVFoundation
 import CoreText
 import SwiftUI
 
-/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 52-second
+/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a one-minute
 /// launch video (1080 × 1350, 30 fps) from the real 3D Mac, recorded live. Everything else
 /// (captions, menu bar, cursor) is drawn here, cut like a short cinematic edit: black, serif
 /// headlines. The first frame already reads, since feeds autoplay muted.
@@ -17,8 +17,8 @@ enum DemoVideo {
 
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
-    static let lengths: [Part: Double] = [.hook: 3.0, .news: 6.2, .menuBar: 2.2, .open: 3.6, .lid: 3.8, .plug: 4.0,
-                                          .ports: 5.2, .desk: 3.6, .heat: 4.8, .actions: 3.0, .thesis: 8.9, .end: 4.4]
+    static let lengths: [Part: Double] = [.hook: 3.0, .news: 10.0, .menuBar: 2.2, .open: 3.6, .lid: 3.8, .plug: 4.0,
+                                          .ports: 5.2, .desk: 3.6, .heat: 6.6, .actions: 3.0, .thesis: 8.9, .end: 4.4]
     static var total: Double { lengths.values.reduce(0, +) }
     nonisolated(unsafe) static var serif = "Hoefler Text"   // set once before rendering
     nonisolated(unsafe) static var credit: String?
@@ -129,7 +129,7 @@ enum DemoVideo {
         desk.externalDisplays = 2
         desk.leftMonitor = true
         desk.rightMonitor = true
-        var hot = charging
+        var hot = base
         hot.temperature = 95
         hot.warning = "Running hot"
 
@@ -170,10 +170,18 @@ enum DemoVideo {
             if t > 0.3 && !atDesk { atDesk = true; mac.setMode(.desk) }
         }
 
+        // The screen and the status follow each alert as it arrives (times match `alerts`).
         reset(hot)
-        var heated = false
-        clips[.heat] = await mac.recordClip(seconds: 4.8) { _ in
+        var heated = false, shown = 0
+        clips[.heat] = await mac.recordClip(seconds: 6.6) { t in
             if !heated { heated = true; mac.setMode(.heat) }
+            let next = [1.9, 3.2, 4.5].filter { t >= $0 }.count
+            guard next != shown else { return }
+            shown = next
+            var state = hot
+            state.warning = ["Running hot", "Memory full", "Disk almost full", "Low battery"][next]
+            if next == 3 { state.batteryPercent = 18 }
+            mac.update(state)
         }
         reset(base)
         for (part, clip) in clips { print(part, String(format: "%.0f fps recorded", Double(clip.count) / max(0.1, clip.last?.time ?? 1))) }
@@ -594,9 +602,9 @@ private struct DemoFrame: View {
     /// DeskBar's real alerts, arriving one after another and stacking like Notification Centre.
     private static let alerts: [(at: Double, symbol: String, tint: Color, title: String, body: String)] = [
         (0.6, "thermometer.high", .orange, "Mac running hot", "macOS is slowing the chip down to cool it (95°C)."),
-        (1.5, "memorychip", Color(red: 1, green: 0.72, blue: 0.2), "Memory full", "Apps may slow down. Safari is using 6.4 GB."),
-        (2.4, "internaldrive", Color(red: 0.95, green: 0.36, blue: 0.24), "Disk almost full", "Only 8.6 GB free. Try Clean up in DeskBar."),
-        (3.3, "airpodspro", Color(red: 0.98, green: 0.47, blue: 0.45), "AirPods Pro low", "Battery at 12%."),
+        (1.9, "memorychip", Color(red: 1, green: 0.72, blue: 0.2), "Memory full", "Apps may slow down. Safari is using 6.4 GB."),
+        (3.2, "internaldrive", Color(red: 0.95, green: 0.36, blue: 0.24), "Disk almost full", "Only 8.6 GB free. Try Clean up in DeskBar."),
+        (4.5, "battery.25percent", Color(red: 0.98, green: 0.42, blue: 0.4), "Battery low", "18% left, about 1h 5m."),
     ]
 
     private var notifications: some View {
@@ -634,7 +642,7 @@ private struct DemoFrame: View {
             .opacity(1 - clamp(depth * 2))   // only the newest one's text shows
         }
         .padding(22)
-        .frame(width: 540, height: 132, alignment: .topLeading)   // one height, so the stack lines up
+        .frame(width: 540, height: 158, alignment: .topLeading)   // one height, so the stack lines up
         .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color(white: 0.17 - 0.03 * min(depth, 2))))
         .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
         .shadow(color: .black.opacity(0.6), radius: 24, y: 10)
@@ -680,18 +688,19 @@ private struct DemoFrame: View {
 
     // MARK: Why it matters now
 
-    /// The news that makes it timely, then what DeskBar does about it.
-    /// Source: PBS NewsHour, 26 June 2026, "Apple increases prices for Macs and iPads, blaming
-    /// memory chip shortage fueled by AI".
+    /// The news that makes it timely, set as a clipping, then what DeskBar does about it.
+    /// Reported by PBS NewsHour, 26 June 2026: Apple raised Mac and iPad prices, blaming a memory
+    /// chip shortage driven by AI. The quote is Apple's statement from that report.
     private var news: some View {
-        let second = local > 3.1
-        let into = second ? local - 3.1 : local
-        let leave = second ? leaving : clamp((into - 2.85) / 0.22)
+        let split = 6.5
+        let second = local > split
+        let into = second ? local - split : local
+        let leave = second ? leaving : clamp((into - (split - 0.25)) / 0.22)
         return ZStack {
-            VStack(spacing: 34) {
-                Kicker(text: second ? "What you can do" : "In the news", time: into - 0.05, size: 30)
-                    .opacity(1 - leave)
-                if second {
+            if second {
+                VStack(spacing: 34) {
+                    Kicker(text: "What you can do", time: into - 0.05, size: 30)
+                        .opacity(1 - leave)
                     Headline(text: "Know what's using your memory|*before you pay for more.*", size: 68, time: into - 0.1, leave: leave)
                         .frame(height: 200)
                     Text("DeskBar shows memory pressure, the apps behind it,\nand warns you before it's full.")
@@ -699,18 +708,99 @@ private struct DemoFrame: View {
                         .multilineTextAlignment(.center)
                         .foregroundStyle(Color(white: 0.62))
                         .opacity(easeOut((into - 0.9) / 0.4) * (1 - leave))
-                } else {
-                    Headline(text: "Apple raised Mac prices, blaming|an *AI-driven memory shortage.*", size: 68, time: into - 0.1, leave: leave)
-                        .frame(height: 200)
-                    Text("PBS NewsHour · 26 June 2026")
-                        .font(.system(size: 26, weight: .medium))
-                        .foregroundStyle(Color(white: 0.5))
-                        .opacity(easeOut((into - 0.9) / 0.4) * (1 - leave))
                 }
+                Color.white.opacity(0.25 * (1 - clamp(into / 0.1)))   // a flash between the two beats
+            } else {
+                clipping(into: into)
+                    .opacity(1 - leave)
+                    .blur(radius: 12 * leave)
             }
-            if second { Color.white.opacity(0.25 * (1 - clamp(into / 0.1))) }   // a flash between the two beats
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
+    }
+
+    private static let ink = Color(red: 0.11, green: 0.1, blue: 0.09)
+    private static let paper = Color(red: 0.96, green: 0.945, blue: 0.915)
+
+    /// A newspaper pull-out: it drops in, the old price is struck through, Apple's own words get
+    /// highlighted.
+    private func clipping(into t: Double) -> some View {
+        let drop = springy(t / 0.6)
+        let angle: Double = -1.6 - 2.4 * (1 - drop)
+        let scale: CGFloat = 0.9 + 0.1 * drop + 0.02 * t / 6.5
+        let lift: CGFloat = 40 + 60 * (1 - drop)
+        return VStack(alignment: .leading, spacing: 0) {
+            clippingMasthead
+            Text("Apple raises Mac prices, blaming an AI-driven memory shortage")
+                .font(serif(62, .medium))
+                .foregroundStyle(Self.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 26)
+            priceRow(t)
+                .padding(.top, 22)
+            pullQuote(t)
+                .padding(.top, 34)
+            Text("Apple, in a statement reported by PBS NewsHour")
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(Self.ink.opacity(0.55))
+                .padding(.top, 14)
+        }
+        .padding(.horizontal, 54).padding(.vertical, 46)
+        .frame(width: 880, alignment: .leading)
+        .background(Self.paper)
+        .shadow(color: .black.opacity(0.6), radius: 40, y: 20)
+        .rotationEffect(.degrees(angle))
+        .scaleEffect(scale)
+        .offset(y: lift)
+        .opacity(clamp(drop * 1.6))
+    }
+
+    private var clippingMasthead: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("IN THE NEWS").tracking(5)
+                Spacer()
+                Text("26 JUNE 2026").tracking(3)
+            }
+            .font(.system(size: 22, weight: .bold))
+            .foregroundStyle(Self.ink.opacity(0.65))
+            Rectangle().fill(Self.ink).frame(height: 3).padding(.top, 16)
+            Rectangle().fill(Self.ink).frame(height: 1).padding(.top, 4)
+        }
+    }
+
+    private func priceRow(_ t: Double) -> some View {
+        let strike = easeOut((t - 1.7) / 0.4)
+        let shown = easeOut((t - 2.0) / 0.35)
+        let red = Color(red: 0.75, green: 0.12, blue: 0.08)
+        return HStack(spacing: 18) {
+            Text("MacBook Pro, 1 TB").font(.system(size: 28, weight: .medium)).foregroundStyle(Self.ink.opacity(0.7))
+            Text("$1,699")
+                .font(.system(size: 30, weight: .medium))
+                .foregroundStyle(Self.ink.opacity(0.5))
+                .overlay(alignment: .leading) {
+                    Rectangle().fill(red).frame(height: 3).scaleEffect(x: strike, anchor: .leading)
+                }
+            Text("→ $1,999")
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(red)
+                .opacity(shown)
+                .offset(x: 12 * (1 - shown))
+        }
+    }
+
+    private func pullQuote(_ t: Double) -> some View {
+        let sweep = ease((t - 2.9) / 0.9)
+        return Text("“We have never seen a component price increase this much, this quickly.”")
+            .font(serif(44)).italic()
+            .foregroundStyle(Self.ink)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(alignment: .leading) {
+                Rectangle()
+                    .fill(Color(red: 1, green: 0.86, blue: 0.35).opacity(0.75))
+                    .scaleEffect(x: sweep, anchor: .leading)
+            }
     }
 
     // MARK: The point of it
