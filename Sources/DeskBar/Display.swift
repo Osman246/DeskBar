@@ -58,7 +58,7 @@ final class DisplayControl: ObservableObject {
         let ddcCount = Int(ddc_display_count())
         for index in 0..<ddcCount {
             let level = ddc_get_brightness(Int32(index))
-            let name = index < externals.count ? externals[index].localizedName : "Monitor \(index + 1)"
+            let name = index < externals.count && !Demo.on ? externals[index].localizedName : "Monitor \(index + 1)"   // demo: no real model names
             // Some monitors stop answering DDC reads but still accept
             // writes, so fall back to the level last set from here.
             let saved = UserDefaults.standard.object(forKey: "ddcBrightness\(index)") as? Double

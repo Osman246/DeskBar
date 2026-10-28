@@ -611,7 +611,8 @@ final class MacScene: ObservableObject {
         if let buds = new.airPods { list.append(HeroPill(text: "AirPods · \(buds)", color: .white)) }
         if mode == .desk {
             let n = new.externalDisplays
-            let names = Set(NSScreen.screens.filter { !$0.isBuiltIn }.map { DisplayNames.friendly($0.localizedName) })
+            // Demo mode leaves out this Mac's real monitor names.
+            let names = Demo.on ? [] : Set(NSScreen.screens.filter { !$0.isBuiltIn }.map { DisplayNames.friendly($0.localizedName) })
             let name = names.count == 1 ? " · " + names.first! : ""
             list.append(HeroPill(text: n == 0 ? "Displays off" : "\(n) display\(n == 1 ? "" : "s")" + name, color: .white))
         }
