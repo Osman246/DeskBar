@@ -2,7 +2,7 @@ import AVFoundation
 import CoreText
 import SwiftUI
 
-/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 43-second
+/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 46-second
 /// launch video (1080 × 1350, 30 fps) from the real 3D Mac, recorded live. Everything else
 /// (captions, menu bar, cursor) is drawn here, cut like a short cinematic edit: black, serif
 /// headlines. The first frame already reads, since feeds autoplay muted.
@@ -18,7 +18,7 @@ enum DemoVideo {
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
     static let lengths: [Part: Double] = [.hook: 3.0, .menuBar: 2.2, .open: 3.6, .lid: 3.8, .plug: 4.0,
-                                          .ports: 5.2, .desk: 3.6, .heat: 4.8, .actions: 3.0, .thesis: 6.0, .end: 4.4]
+                                          .ports: 5.2, .desk: 3.6, .heat: 4.8, .actions: 3.0, .thesis: 8.9, .end: 4.4]
     static var total: Double { lengths.values.reduce(0, +) }
     nonisolated(unsafe) static var serif = "Hoefler Text"   // set once before rendering
     nonisolated(unsafe) static var credit: String?
@@ -251,11 +251,12 @@ private struct Headline: View {
 private struct Kicker: View {
     let text: String
     let time: Double
+    var size: CGFloat = 21
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 21, weight: .semibold))
-            .tracking(7)
-            .foregroundStyle(Color(white: 0.55))
+            .font(.system(size: size, weight: .semibold))
+            .tracking(size / 3)
+            .foregroundStyle(Color(white: size > 21 ? 0.7 : 0.55))
             .opacity(easeOut(time / 0.4))
     }
 }
@@ -678,22 +679,27 @@ private struct DemoFrame: View {
 
     // MARK: The point of it
 
-    /// Two lines on why it's built this way, each with its own beat.
+    /// What building it taught me: three lines, each with its own beat.
     private var thesis: some View {
-        let second = local > 3.1
-        let into = second ? local - 3.1 : local
-        let leave = second ? leaving : clamp((local - 2.85) / 0.22)
-        return VStack(spacing: 0) {
-            if second {
-                Headline(text: "Nobody wants a dashboard.|*They want one sentence.*", size: 76, time: into - 0.08, leave: leave)
-            } else {
-                Headline(text: "The most valuable 24 pixels|on a Mac *are in the menu bar.*", size: 70, time: into - 0.08, leave: leave)
+        let lines = [
+            ("The most valuable 24 pixels|on a Mac *are in the menu bar.*", 70.0),
+            ("Nobody wants a dashboard.|*They want one sentence.*", 76.0),
+            ("AI made building cheap.|*Deciding what to build* is the job.", 72.0),
+        ]
+        let beat = 2.95
+        let i = min(Int(local / beat), lines.count - 1)
+        let into = local - Double(i) * beat
+        let leave = i == lines.count - 1 ? leaving : clamp((into - (beat - 0.25)) / 0.22)
+        return ZStack {
+            VStack(spacing: 34) {
+                Kicker(text: "What building it taught me", time: local - 0.1, size: 30)
+                    .opacity(1 - leaving)
+                Headline(text: lines[i].0, size: lines[i].1, time: into - 0.08, leave: leave)
+                    .frame(height: 200)
             }
+            if i > 0 { Color.white.opacity(0.25 * (1 - clamp(into / 0.1))) }   // a flash between lines
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
-        .overlay(alignment: .top) {
-            if second { Color.white.opacity(0.25 * (1 - clamp(into / 0.1))) }   // a flash between the two lines
-        }
     }
 
     // MARK: End card
