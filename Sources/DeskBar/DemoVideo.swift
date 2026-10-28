@@ -2,7 +2,7 @@ import AVFoundation
 import CoreText
 import SwiftUI
 
-/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 37-second
+/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 43-second
 /// launch video (1080 × 1350, 30 fps) from the real 3D Mac, recorded live. Everything else
 /// (captions, menu bar, cursor) is drawn here, cut like a short cinematic edit: black, serif
 /// headlines. The first frame already reads, since feeds autoplay muted.
@@ -13,12 +13,12 @@ import SwiftUI
 /// directory, and macOS's Hoefler Text otherwise.
 @MainActor
 enum DemoVideo {
-    enum Part: CaseIterable { case hook, menuBar, open, lid, plug, ports, desk, heat, actions, end }
+    enum Part: CaseIterable { case hook, menuBar, open, lid, plug, ports, desk, heat, actions, thesis, end }
 
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
     static let lengths: [Part: Double] = [.hook: 3.0, .menuBar: 2.2, .open: 3.6, .lid: 3.8, .plug: 4.0,
-                                          .ports: 5.2, .desk: 3.6, .heat: 4.8, .actions: 3.0, .end: 4.4]
+                                          .ports: 5.2, .desk: 3.6, .heat: 4.8, .actions: 3.0, .thesis: 6.0, .end: 4.4]
     static var total: Double { lengths.values.reduce(0, +) }
     nonisolated(unsafe) static var serif = "Hoefler Text"   // set once before rendering
     nonisolated(unsafe) static var credit: String?
@@ -212,26 +212,27 @@ private struct Headline: View {
 
     var body: some View {
         // Words with their italic flag; an italic span runs from a word starting with * to one ending with *.
-        var inItalic = false
-        let lines: [[(String, Bool)]] = text.split(separator: "|").map { line in
+        // Each word with its italic flag and its place in the whole headline, worked out up front
+        // (a counter inside the view builder can run more than once and delay the later words).
+        var inItalic = false, count = 0
+        let lines: [[(word: String, italic: Bool, index: Int)]] = text.split(separator: "|").map { line in
             line.split(separator: " ").map { raw in
                 let word = String(raw)
                 if word.hasPrefix("*") { inItalic = true }
-                let entry = (word.replacingOccurrences(of: "*", with: ""), inItalic)
+                let entry = (word: word.replacingOccurrences(of: "*", with: ""), italic: inItalic, index: count)
                 if word.hasSuffix("*") { inItalic = false }
+                count += 1
                 return entry
             }
         }
-        var index = 0
         return VStack(alignment: alignment, spacing: size * 0.06) {
             ForEach(Array(lines.enumerated()), id: \.offset) { _, words in
                 HStack(alignment: .firstTextBaseline, spacing: size * 0.24) {
                     ForEach(Array(words.enumerated()), id: \.offset) { _, entry in
-                        let i = { defer { index += 1 }; return index }()
-                        let p = easeOut((time - Double(i) * 0.09) / 0.5)
-                        Text(entry.0)
+                        let p = easeOut((time - Double(entry.index) * 0.08) / 0.45)
+                        Text(entry.word)
                             .font(serif(size, .regular))
-                            .italic(entry.1)
+                            .italic(entry.italic)
                             .fixedSize()
                             .foregroundStyle(Color.white)
                             .blur(radius: 14 * (1 - p) + 18 * leave)
@@ -276,7 +277,7 @@ private struct DemoFrame: View {
     static let productParts: [DemoVideo.Part] = [.open, .lid, .plug, .ports, .desk, .heat]
     /// Parts that open on a hard cut: a white flash and a punch-in.
     /// The lid scene carries straight on from the opening (same shot), so it doesn't cut.
-    static let cuts: [DemoVideo.Part] = [.open, .plug, .ports, .desk, .heat, .actions, .end]
+    static let cuts: [DemoVideo.Part] = [.open, .plug, .ports, .desk, .heat, .actions, .thesis, .end]
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -286,6 +287,7 @@ private struct DemoFrame: View {
                 case .hook: hook
                 case .menuBar: introducing
                 case .actions: actions
+                case .thesis: thesis
                 case .end: endCard
                 default: EmptyView()
                 }
@@ -671,6 +673,26 @@ private struct DemoFrame: View {
                 .frame(width: DemoVideo.size.width)
                 .offset(y: 1090)
                 .opacity(easeOut((local - 1.65) / 0.3) * (1 - leaving))
+        }
+    }
+
+    // MARK: The point of it
+
+    /// Two lines on why it's built this way, each with its own beat.
+    private var thesis: some View {
+        let second = local > 3.1
+        let into = second ? local - 3.1 : local
+        let leave = second ? leaving : clamp((local - 2.85) / 0.22)
+        return VStack(spacing: 0) {
+            if second {
+                Headline(text: "Nobody wants a dashboard.|*They want one sentence.*", size: 76, time: into - 0.08, leave: leave)
+            } else {
+                Headline(text: "The most valuable 24 pixels|on a Mac *are in the menu bar.*", size: 70, time: into - 0.08, leave: leave)
+            }
+        }
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
+        .overlay(alignment: .top) {
+            if second { Color.white.opacity(0.25 * (1 - clamp(into / 0.1))) }   // a flash between the two lines
         }
     }
 
