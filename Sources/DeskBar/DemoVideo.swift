@@ -2,7 +2,7 @@ import AVFoundation
 import CoreText
 import SwiftUI
 
-/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 36-second
+/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 37-second
 /// launch video (1080 × 1350, 30 fps) from the real 3D Mac, recorded live. Everything else
 /// (captions, menu bar, cursor) is drawn here, cut like a short cinematic edit: black, serif
 /// headlines. The first frame already reads, since feeds autoplay muted.
@@ -16,7 +16,7 @@ enum DemoVideo {
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
     static let lengths: [Part: Double] = [.hook: 3.0, .menuBar: 2.2, .open: 3.6, .lid: 3.8, .plug: 4.0,
-                                          .ports: 5.2, .desk: 3.6, .heat: 3.6, .actions: 3.0, .end: 4.4]
+                                          .ports: 5.2, .desk: 3.6, .heat: 4.8, .actions: 3.0, .end: 4.4]
     static var total: Double { lengths.values.reduce(0, +) }
     nonisolated(unsafe) static var serif = "Hoefler Text"   // set once before rendering
 
@@ -165,7 +165,7 @@ enum DemoVideo {
 
         reset(hot)
         var heated = false
-        clips[.heat] = await mac.recordClip(seconds: 3.6) { _ in
+        clips[.heat] = await mac.recordClip(seconds: 4.8) { _ in
             if !heated { heated = true; mac.setMode(.heat) }
         }
         reset(base)
@@ -283,7 +283,7 @@ private struct DemoFrame: View {
                 }
                 if Self.productParts.contains(part) { product }
                 if Self.productParts.contains(part) || part == .actions { caption }
-                if part == .heat { notification }
+                if part == .heat { notifications }
                 if Self.productParts.contains(part) || part == .actions { chapter }
             }
             .scaleEffect(punch, anchor: .center)
@@ -579,33 +579,56 @@ private struct DemoFrame: View {
 
     // MARK: Heat alert
 
-    private var notification: some View {
-        let p = springy((local - 0.8) / 0.5)
-        let x: CGFloat = Self.stage.maxX - 520 + 60 * (1 - p)
-        let y: CGFloat = Self.stage.minY - 10
+    /// DeskBar's real alerts, arriving one after another and stacking like Notification Centre.
+    private static let alerts: [(at: Double, symbol: String, tint: Color, title: String, body: String)] = [
+        (0.6, "thermometer.high", .orange, "Mac running hot", "macOS is slowing the chip down to cool it (95°C)."),
+        (1.5, "memorychip", Color(red: 1, green: 0.72, blue: 0.2), "Memory full", "Apps may slow down. Safari is using 6.4 GB."),
+        (2.4, "internaldrive", Color(red: 0.95, green: 0.36, blue: 0.24), "Disk almost full", "Only 8.6 GB free. Try Clean up in DeskBar."),
+        (3.3, "airpodspro", Color(red: 0.98, green: 0.47, blue: 0.45), "AirPods Pro low", "Battery at 12%."),
+    ]
+
+    private var notifications: some View {
+        let alerts = Self.alerts
+        return ZStack(alignment: .topLeading) {
+            ForEach(Array(alerts.enumerated()), id: \.offset) { i, alert in
+                // How far newer alerts have pushed this one back into the stack.
+                let depth = alerts[(i + 1)...].reduce(0.0) { $0 + easeOut((local - $1.at) / 0.35) }
+                notification(alert.symbol, alert.tint, alert.title, alert.body, arrival: springy((local - alert.at) / 0.5), depth: depth)
+                    .zIndex(Double(i))
+            }
+        }
+        .opacity(1 - leaving)
+    }
+
+    private func notification(_ symbol: String, _ tint: Color, _ title: String, _ body: String, arrival p: Double, depth: Double) -> some View {
+        let x: CGFloat = Self.stage.maxX - 540 + 60 * (1 - p)
+        let y: CGFloat = Self.stage.minY - 10 + 24 * depth
+        let scale: CGFloat = 1 - 0.05 * depth
         return HStack(alignment: .top, spacing: 18) {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.orange)
+                .fill(tint)
                 .frame(width: 64, height: 64)
-                .overlay(Image(systemName: "thermometer.high").font(.system(size: 32, weight: .semibold)).foregroundStyle(.white))
+                .overlay(Image(systemName: symbol).font(.system(size: 30, weight: .semibold)).foregroundStyle(.white))
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text("DESKBAR").font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(white: 0.6))
                     Spacer()
                     Text("now").font(.system(size: 18)).foregroundStyle(Color(white: 0.6))
                 }
-                Text("Mac running hot").font(.system(size: 26, weight: .semibold)).foregroundStyle(.white)
-                Text("macOS is slowing the chip down to cool it (95°C).").font(.system(size: 22)).foregroundStyle(Color(white: 0.8))
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(title).font(.system(size: 26, weight: .semibold)).foregroundStyle(.white)
+                Text(body).font(.system(size: 22)).foregroundStyle(Color(white: 0.8))
+                    .lineLimit(2)
             }
+            .opacity(1 - clamp(depth * 2))   // only the newest one's text shows
         }
         .padding(22)
-        .frame(width: 520)
-        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color(white: 0.17)))
+        .frame(width: 540, height: 132, alignment: .topLeading)   // one height, so the stack lines up
+        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color(white: 0.17 - 0.03 * min(depth, 2))))
         .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
         .shadow(color: .black.opacity(0.6), radius: 24, y: 10)
+        .scaleEffect(scale * (0.96 + 0.04 * p), anchor: .top)
         .offset(x: x, y: y)
-        .opacity(clamp(p * 1.5) * (1 - leaving))
+        .opacity(clamp(p * 5) * (1 - clamp((depth - 2) / 0.6)))   // solid almost at once, so nothing shows through
     }
 
     // MARK: Quick actions
