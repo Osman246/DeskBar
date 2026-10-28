@@ -2,7 +2,7 @@ import AVFoundation
 import CoreText
 import SwiftUI
 
-/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 46-second
+/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 52-second
 /// launch video (1080 × 1350, 30 fps) from the real 3D Mac, recorded live. Everything else
 /// (captions, menu bar, cursor) is drawn here, cut like a short cinematic edit: black, serif
 /// headlines. The first frame already reads, since feeds autoplay muted.
@@ -13,11 +13,11 @@ import SwiftUI
 /// directory, and macOS's Hoefler Text otherwise.
 @MainActor
 enum DemoVideo {
-    enum Part: CaseIterable { case hook, menuBar, open, lid, plug, ports, desk, heat, actions, thesis, end }
+    enum Part: CaseIterable { case hook, news, menuBar, open, lid, plug, ports, desk, heat, actions, thesis, end }
 
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
-    static let lengths: [Part: Double] = [.hook: 3.0, .menuBar: 2.2, .open: 3.6, .lid: 3.8, .plug: 4.0,
+    static let lengths: [Part: Double] = [.hook: 3.0, .news: 6.2, .menuBar: 2.2, .open: 3.6, .lid: 3.8, .plug: 4.0,
                                           .ports: 5.2, .desk: 3.6, .heat: 4.8, .actions: 3.0, .thesis: 8.9, .end: 4.4]
     static var total: Double { lengths.values.reduce(0, +) }
     nonisolated(unsafe) static var serif = "Hoefler Text"   // set once before rendering
@@ -278,7 +278,7 @@ private struct DemoFrame: View {
     static let productParts: [DemoVideo.Part] = [.open, .lid, .plug, .ports, .desk, .heat]
     /// Parts that open on a hard cut: a white flash and a punch-in.
     /// The lid scene carries straight on from the opening (same shot), so it doesn't cut.
-    static let cuts: [DemoVideo.Part] = [.open, .plug, .ports, .desk, .heat, .actions, .thesis, .end]
+    static let cuts: [DemoVideo.Part] = [.news, .open, .plug, .ports, .desk, .heat, .actions, .thesis, .end]
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -289,6 +289,7 @@ private struct DemoFrame: View {
                 case .menuBar: introducing
                 case .actions: actions
                 case .thesis: thesis
+                case .news: news
                 case .end: endCard
                 default: EmptyView()
                 }
@@ -383,7 +384,7 @@ private struct DemoFrame: View {
 
     private var menuBarShown: Double {
         switch part {
-        case .hook: 0
+        case .hook, .news: 0
         case .menuBar: easeOut(local / 0.35)
         case .end: 1 - ease(local / 0.4)
         default: 1
@@ -395,7 +396,7 @@ private struct DemoFrame: View {
 
     private var panelOpen: Bool {
         switch part {
-        case .hook, .end: false
+        case .hook, .news, .end: false
         case .menuBar: local > 1.3
         default: true
         }
@@ -675,6 +676,41 @@ private struct DemoFrame: View {
                 .offset(y: 1090)
                 .opacity(easeOut((local - 1.65) / 0.3) * (1 - leaving))
         }
+    }
+
+    // MARK: Why it matters now
+
+    /// The news that makes it timely, then what DeskBar does about it.
+    /// Source: PBS NewsHour, 26 June 2026, "Apple increases prices for Macs and iPads, blaming
+    /// memory chip shortage fueled by AI".
+    private var news: some View {
+        let second = local > 3.1
+        let into = second ? local - 3.1 : local
+        let leave = second ? leaving : clamp((into - 2.85) / 0.22)
+        return ZStack {
+            VStack(spacing: 34) {
+                Kicker(text: second ? "What you can do" : "In the news", time: into - 0.05, size: 30)
+                    .opacity(1 - leave)
+                if second {
+                    Headline(text: "Know what's using your memory|*before you pay for more.*", size: 68, time: into - 0.1, leave: leave)
+                        .frame(height: 200)
+                    Text("DeskBar shows memory pressure, the apps behind it,\nand warns you before it's full.")
+                        .font(.system(size: 30))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(Color(white: 0.62))
+                        .opacity(easeOut((into - 0.9) / 0.4) * (1 - leave))
+                } else {
+                    Headline(text: "Apple raised Mac prices, blaming|an *AI-driven memory shortage.*", size: 68, time: into - 0.1, leave: leave)
+                        .frame(height: 200)
+                    Text("PBS NewsHour · 26 June 2026")
+                        .font(.system(size: 26, weight: .medium))
+                        .foregroundStyle(Color(white: 0.5))
+                        .opacity(easeOut((into - 0.9) / 0.4) * (1 - leave))
+                }
+            }
+            if second { Color.white.opacity(0.25 * (1 - clamp(into / 0.1))) }   // a flash between the two beats
+        }
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
     }
 
     // MARK: The point of it
