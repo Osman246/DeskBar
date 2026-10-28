@@ -2,10 +2,10 @@ import AVFoundation
 import CoreText
 import SwiftUI
 
-/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 31-second
+/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 36-second
 /// launch video (1080 × 1350, 30 fps) from the real 3D Mac, recorded live. Everything else
-/// (captions, menu bar, cursor) is drawn here, cut like a short cinematic edit: black, film grain,
-/// serif headlines. The first frame already reads, since feeds autoplay muted.
+/// (captions, menu bar, cursor) is drawn here, cut like a short cinematic edit: black, serif
+/// headlines. The first frame already reads, since feeds autoplay muted.
 ///
 /// The headlines use EB Garamond (SIL Open Font License) when its .ttf files are in the `--fonts`
 /// directory, and macOS's Hoefler Text otherwise.
@@ -15,8 +15,8 @@ enum DemoVideo {
 
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
-    static let lengths: [Part: Double] = [.hook: 2.6, .menuBar: 1.7, .open: 3.0, .lid: 3.2, .plug: 3.4,
-                                          .ports: 4.8, .desk: 3.0, .heat: 3.0, .actions: 2.6, .end: 4.0]
+    static let lengths: [Part: Double] = [.hook: 3.0, .menuBar: 2.2, .open: 3.6, .lid: 3.8, .plug: 4.0,
+                                          .ports: 5.2, .desk: 3.6, .heat: 3.6, .actions: 3.0, .end: 4.4]
     static var total: Double { lengths.values.reduce(0, +) }
     nonisolated(unsafe) static var serif = "Hoefler Text"   // set once before rendering
 
@@ -44,7 +44,6 @@ enum DemoVideo {
         let mac = model.mac
         await mac.waitUntilLoaded()
         let clips = await record(mac)
-        let grain = (0..<4).compactMap { _ in Self.grain() }
 
         let url = URL(fileURLWithPath: directory).appendingPathComponent("deskbar-demo.mp4")
         try? FileManager.default.removeItem(at: url)
@@ -68,7 +67,7 @@ enum DemoVideo {
         let stills = Set(stride(from: 0.0, to: total, by: 1.2).map { Int($0 * fps) })
         for index in 0..<frames {
             let t = Double(index) / fps
-            let view = DemoFrame(t: t, clips: clips, grain: grain.isEmpty ? nil : grain[index % grain.count])
+            let view = DemoFrame(t: t, clips: clips)
                 .frame(width: size.width, height: size.height)
                 .environment(\.colorScheme, .dark)
             let renderer = ImageRenderer(content: view)
@@ -96,17 +95,6 @@ enum DemoVideo {
         input.markAsFinished()
         await writer.finishWriting()
         print(writer.status == .completed ? "Wrote \(url.path)" : "Video failed: \(writer.error?.localizedDescription ?? "?")")
-    }
-
-    /// A frame of film grain at half resolution; it's drawn scaled up, so the grain reads at phone size.
-    private static func grain() -> CGImage? {
-        let w = Int(size.width) / 2, h = Int(size.height) / 2
-        var pixels = [UInt8](repeating: 0, count: w * h)
-        for i in pixels.indices { pixels[i] = UInt8.random(in: 0...255) }
-        guard let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
-        return CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: w,
-                       space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGBitmapInfo(rawValue: 0),
-                       provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
     }
 
     // MARK: Recording the 3D Mac
@@ -147,40 +135,41 @@ enum DemoVideo {
         }
 
         reset(base)
-        clips[.open] = await mac.recordClip(seconds: 3.0, intro: true)
+        clips[.open] = await mac.recordClip(seconds: 3.6, intro: true)
 
         reset(base)
-        clips[.lid] = await mac.recordClip(seconds: 3.2) { t in
-            let angle = t < 0.3 ? 112 : t < 1.3 ? 112 - 77 * ease((t - 0.3) / 1.0) : t < 1.6 ? 35 : 35 + 77 * ease((t - 1.6) / 1.1)
+        clips[.lid] = await mac.recordClip(seconds: 3.8) { t in
+            let angle = t < 0.4 ? 112 : t < 1.5 ? 112 - 77 * ease((t - 0.4) / 1.1) : t < 2.0 ? 35 : 35 + 77 * ease((t - 2.0) / 1.2)
             mac.simulateLid(angle)
         }
 
         reset(base)
         var plugged = false, cells = false
-        clips[.plug] = await mac.recordClip(seconds: 3.4) { t in
-            if t > 0.4 && !plugged { plugged = true; mac.update(charging) }
-            if t > 1.7 && !cells { cells = true; mac.setMode(.charging) }
+        clips[.plug] = await mac.recordClip(seconds: 4.0) { t in
+            if t > 0.5 && !plugged { plugged = true; mac.update(charging) }
+            if t > 2.0 && !cells { cells = true; mac.setMode(.charging) }
         }
 
         reset(desk)
         var leftSide = false, rightSide = false
-        clips[.ports] = await mac.recordClip(seconds: 4.8) { t in
+        clips[.ports] = await mac.recordClip(seconds: 5.2) { t in
             if !leftSide { leftSide = true; mac.setMode(.ports(.left)) }
-            if t > 2.2 && !rightSide { rightSide = true; mac.setMode(.ports(.right)) }
+            if t > 2.4 && !rightSide { rightSide = true; mac.setMode(.ports(.right)) }
         }
 
         reset(desk)
         var atDesk = false
-        clips[.desk] = await mac.recordClip(seconds: 3.0) { t in
+        clips[.desk] = await mac.recordClip(seconds: 3.6) { t in
             if t > 0.3 && !atDesk { atDesk = true; mac.setMode(.desk) }
         }
 
         reset(hot)
         var heated = false
-        clips[.heat] = await mac.recordClip(seconds: 3.0) { _ in
+        clips[.heat] = await mac.recordClip(seconds: 3.6) { _ in
             if !heated { heated = true; mac.setMode(.heat) }
         }
         reset(base)
+        for (part, clip) in clips { print(part, String(format: "%.0f fps recorded", Double(clip.count) / max(0.1, clip.last?.time ?? 1))) }
         return clips
     }
 }
@@ -250,13 +239,13 @@ private struct Headline: View {
     }
 }
 
-/// Small, widely spaced capitals above a headline.
+/// Small, widely spaced capitals above a headline, in SF Pro like all the supporting text.
 private struct Kicker: View {
     let text: String
     let time: Double
     var body: some View {
         Text(text.uppercased())
-            .font(serif(22, .medium))
+            .font(.system(size: 21, weight: .semibold))
             .tracking(7)
             .foregroundStyle(Color(white: 0.55))
             .opacity(easeOut(time / 0.4))
@@ -268,7 +257,6 @@ private struct Kicker: View {
 private struct DemoFrame: View {
     let t: Double
     let clips: [DemoVideo.Part: [MacScene.ClipFrame]]
-    let grain: CGImage?
 
     private var current: (DemoVideo.Part, Double) { DemoVideo.part(at: t) }
     private var part: DemoVideo.Part { current.0 }
@@ -312,17 +300,13 @@ private struct DemoFrame: View {
         Self.cuts.contains(part) ? 1 + 0.06 * (1 - easeOut(local / 0.35)) : 1
     }
 
-    /// Flash, vignette, grain and the progress line, over everything.
+    /// Flash, vignette and the progress line, over everything.
     private var finish: some View {
         ZStack(alignment: .topLeading) {
             if Self.cuts.contains(part) {
                 Color.white.opacity(0.32 * (1 - clamp(local / 0.12)))
             }
             RadialGradient(colors: [.clear, .black.opacity(0.55)], center: .center, startRadius: 380, endRadius: 900)
-            if let grain {
-                Image(decorative: grain, scale: 1).resizable().interpolation(.none)
-                    .blendMode(.overlay).opacity(0.13)
-            }
             Rectangle().fill(Color.white.opacity(0.85))
                 .frame(width: DemoVideo.size.width * t / DemoVideo.total, height: 3)
                 .offset(y: DemoVideo.size.height - 3)
@@ -337,7 +321,7 @@ private struct DemoFrame: View {
     /// quick montage of the places you'd check today.
     private var hook: some View {
         let places = ["Activity Monitor.", "System Settings.", "Control Centre.", "The battery menu."]
-        let montage = local - 1.0
+        let montage = local - 1.4
         return ZStack(alignment: .topLeading) {
             if montage < 0 {
                 if let mac = clips[.lid]?.first {
@@ -353,7 +337,7 @@ private struct DemoFrame: View {
                     .frame(width: DemoVideo.size.width)
                     .offset(y: 170)
             } else {
-                let step = 0.38
+                let step = 0.36
                 let i = min(Int(montage / step), places.count - 1)
                 let into = montage - Double(i) * step
                 VStack(spacing: 26) {
@@ -365,7 +349,7 @@ private struct DemoFrame: View {
                         .scaleEffect(1.08 - 0.08 * easeOut(into / 0.3))
                 }
                 .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
-                .opacity(1 - clamp((montage - 1.45) / 0.15))
+                .opacity(1 - clamp((montage - 1.42) / 0.15))
                 Color.white.opacity(0.22 * (1 - clamp(into / 0.08)))   // a flash on every word
             }
         }
@@ -379,7 +363,7 @@ private struct DemoFrame: View {
             Kicker(text: "Introducing", time: local - 0.1)
             Headline(text: "DeskBar.", size: 150, time: local - 0.25, leave: leaving)
             Text("It lives in your menu bar.")
-                .font(serif(38)).italic()
+                .font(.system(size: 32))
                 .foregroundStyle(Color(white: 0.6))
                 .opacity(easeOut((local - 0.7) / 0.4) * (1 - leaving))
         }
@@ -396,41 +380,42 @@ private struct DemoFrame: View {
     }
 
     /// The DeskBar item, in canvas points.
-    static let itemCentre = CGPoint(x: 631, y: 22)
+    static let itemCentre = CGPoint(x: 626, y: 28)
 
     private var panelOpen: Bool {
         switch part {
         case .hook, .end: false
-        case .menuBar: local > 1.1
+        case .menuBar: local > 1.3
         default: true
         }
     }
 
+    /// Drawn larger than a real menu bar so it stays crisp at phone size.
     private var menuBar: some View {
         HStack(spacing: 0) {
-            Image(systemName: "apple.logo").font(.system(size: 24)).frame(width: 46)
-            ForEach(["Finder", "File", "Edit", "View", "Go"], id: \.self) { item in
-                Text(item).font(.system(size: 21, weight: item == "Finder" ? .bold : .regular)).padding(.horizontal, 11)
+            Image(systemName: "apple.logo").font(.system(size: 29)).frame(width: 52)
+            ForEach(["Finder", "File", "Edit", "View"], id: \.self) { item in
+                Text(item).font(.system(size: 26, weight: item == "Finder" ? .bold : .regular)).padding(.horizontal, 12)
             }
             Spacer()
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Image(systemName: "thermometer.medium")
                 Text("39°").monospacedDigit()
             }
-            .font(.system(size: 21, weight: .medium))
-            .frame(width: 110, height: 34)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(panelOpen ? 0.22 : 0)))
-            Image(systemName: "wifi").font(.system(size: 20)).frame(width: 56)
-            Image(systemName: "battery.75percent").font(.system(size: 22)).frame(width: 64)
-            Text(Date.now.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute()))   // matches the 3D Mac's screen
-                .font(.system(size: 21))
-                .frame(width: 250, alignment: .trailing)
+            .font(.system(size: 26, weight: .medium))
+            .frame(width: 128, height: 42)
+            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(panelOpen ? 0.22 : 0)))
+            Image(systemName: "wifi").font(.system(size: 24)).frame(width: 64)
+            Image(systemName: "battery.75percent").font(.system(size: 27)).frame(width: 72)
+            Text(Date.now.formatted(.dateTime.weekday(.abbreviated).hour().minute()))   // matches the 3D Mac's screen
+                .font(.system(size: 26))
+                .frame(width: 230, alignment: .trailing)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 24)
-        .frame(width: DemoVideo.size.width, height: 44)
+        .frame(width: DemoVideo.size.width, height: 56)
         .background(Color(white: 0.1).opacity(0.95))
-        .offset(y: -44 * (1 - menuBarShown))
+        .offset(y: -56 * (1 - menuBarShown))
         .opacity(menuBarShown)
     }
 
@@ -438,7 +423,7 @@ private struct DemoFrame: View {
         let start = CGPoint(x: 540, y: 1000), end = Self.itemCentre
         switch part {
         case .menuBar:
-            let p = ease((local - 0.3) / 0.7)
+            let p = ease((local - 0.45) / 0.75)
             return CGPoint(x: start.x + (end.x - start.x) * p + 10, y: start.y + (end.y - start.y) * p + 6)
         case .open where local < 0.6:
             return CGPoint(x: end.x + 10, y: end.y + 6)
@@ -448,7 +433,7 @@ private struct DemoFrame: View {
 
     @ViewBuilder private var cursor: some View {
         if let point = cursorPoint {
-            let click = part == .menuBar ? clamp((local - 1.05) / 0.45) : 1
+            let click = part == .menuBar ? clamp((local - 1.25) / 0.45) : 1
             ZStack(alignment: .topLeading) {
                 if click > 0 && click < 1 {
                     Circle()
@@ -459,7 +444,7 @@ private struct DemoFrame: View {
                 Arrow()
                     .fill(Color.black)
                     .overlay(Arrow().stroke(Color.white, lineWidth: 2.5))
-                    .frame(width: 30, height: 44)
+                    .frame(width: 36, height: 53)
                     .scaleEffect(click > 0 && click < 0.25 ? 0.85 : 1, anchor: .topLeading)
                     .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
                     .offset(x: point.x, y: point.y)
@@ -488,7 +473,7 @@ private struct DemoFrame: View {
         return VStack(spacing: 14) {
             Headline(text: text.headline, size: 84, time: local - 0.08, leave: leaving)
             Text(text.line)
-                .font(serif(34)).italic()
+                .font(.system(size: 30))
                 .foregroundStyle(Color(white: 0.58))
                 .opacity(easeOut((local - 0.45) / 0.4) * (1 - leaving))
         }
@@ -506,7 +491,7 @@ private struct DemoFrame: View {
             Text(String(format: "%02d", steps.count)).foregroundStyle(Color(white: 0.45))
             Text(captionText.kicker.uppercased()).tracking(7).foregroundStyle(Color(white: 0.55)).padding(.leading, 18)
         }
-        .font(serif(26, .medium))
+        .font(.system(size: 23, weight: .medium))
         .monospacedDigit()
         .frame(width: DemoVideo.size.width)
         .offset(y: 1210)
@@ -547,19 +532,19 @@ private struct DemoFrame: View {
                 ForEach(shownPills) { pill in
                     HStack(spacing: 12) {
                         Circle().fill(pill.color).frame(width: 12, height: 12)
-                        Text(pill.text.uppercased()).font(serif(24, .medium)).tracking(5).foregroundStyle(Color(white: 0.8))
+                        Text(pill.text.uppercased()).font(.system(size: 21, weight: .semibold)).tracking(4).foregroundStyle(Color(white: 0.8))
                     }
                 }
             }
             .frame(width: DemoVideo.size.width)
             .offset(y: Self.stage.maxY + 22)
-            .opacity((part == .open ? easeOut((local - 1.8) / 0.4) : easeOut(local / 0.3)) * (1 - leaving))
+            .opacity((part == .open ? easeOut((local - 2.1) / 0.4) : easeOut(local / 0.3)) * (1 - leaving))
         }
     }
 
     /// Rings on the ports and labels below, arriving one after another once the camera settles.
     private func portLabels(_ now: MacScene.ClipFrame) -> some View {
-        let side: Ports.Side = local < 2.2 ? .left : .right
+        let side: Ports.Side = local < 2.4 ? .left : .right
         let ports = DemoVideo.ports(DemoVideo.shownPorts).filter { $0.side == side && now.anchors[$0.id] != nil }
         // How long the anchors have been showing.
         let since = clip.reversed().drop { $0.time > local }.prefix { !$0.anchors.isEmpty }.last.map { local - $0.time } ?? 0
@@ -582,8 +567,8 @@ private struct DemoFrame: View {
             Rectangle().fill(Color.white.opacity(0.4)).frame(width: 1.5, height: line)
                 .offset(x: x - 0.75, y: y + 13)
             VStack(spacing: 0) {
-                Text(port.name).font(serif(30, .medium)).foregroundStyle(.white)
-                Text(port.detail).font(serif(24)).italic().foregroundStyle(Color(white: port.connected ? 0.75 : 0.45))
+                Text(port.name).font(.system(size: 27, weight: .semibold)).foregroundStyle(.white)
+                Text(port.detail).font(.system(size: 22)).foregroundStyle(Color(white: port.connected ? 0.75 : 0.45))
             }
             .fixedSize()
             .frame(width: 260)
@@ -629,8 +614,8 @@ private struct DemoFrame: View {
         let items: [(String, String)] = [("Focus", "moon.fill"), ("Awake", "cup.and.saucer.fill"), ("Hide desk", "eye.slash.fill"),
                                          ("Mute mic", "mic.slash.fill"), ("Display off", "display"), ("Capture", "camera.viewfinder"),
                                          ("Clean up", "arrow.down.circle"), ("Lock", "lock.fill")]
-        let focusOn = local > 1.35
-        let tap = clamp((local - 1.2) / 0.35)
+        let focusOn = local > 1.55
+        let tap = clamp((local - 1.4) / 0.35)
         return ZStack(alignment: .topLeading) {
             ForEach(Array(items.enumerated()), id: \.offset) { i, item in
                 let p = springy((local - 0.15 - Double(i) * 0.05) / 0.4)
@@ -642,7 +627,7 @@ private struct DemoFrame: View {
                         .frame(width: 150, height: 150)
                         .overlay(Image(systemName: item.1).font(.system(size: 52, weight: .regular)).foregroundStyle(on ? Color.black : Color.white))
                         .scaleEffect(i == 0 && tap > 0 && tap < 1 ? 1 - 0.12 * sin(tap * .pi) : 1)
-                    Text(item.0).font(serif(32)).foregroundStyle(Color(white: on ? 1 : 0.7))
+                    Text(item.0).font(.system(size: 27, weight: .medium)).foregroundStyle(Color(white: on ? 1 : 0.7))
                 }
                 .frame(width: 230)
                 .scaleEffect(0.4 + 0.6 * p)
@@ -650,11 +635,11 @@ private struct DemoFrame: View {
                 .offset(x: 80 + CGFloat(i % 4) * 230, y: 470 + CGFloat(i / 4) * 290)
             }
             Text("Focus on.")
-                .font(serif(36)).italic()
+                .font(.system(size: 30))
                 .foregroundStyle(Color(white: 0.7))
                 .frame(width: DemoVideo.size.width)
                 .offset(y: 1090)
-                .opacity(easeOut((local - 1.45) / 0.3) * (1 - leaving))
+                .opacity(easeOut((local - 1.65) / 0.3) * (1 - leaving))
         }
     }
 
@@ -670,23 +655,23 @@ private struct DemoFrame: View {
                 .opacity(easeOut((local - 0.45) / 0.45))
                 .padding(.top, 6)
             Text("FREE  ·  OPEN SOURCE  ·  PRIVATE BY DESIGN")
-                .font(serif(23, .medium)).tracking(6)
+                .font(.system(size: 20, weight: .semibold)).tracking(5)
                 .foregroundStyle(Color(white: 0.55))
                 .opacity(easeOut((local - 0.9) / 0.45))
                 .padding(.top, 44)
             Headline(text: "What should it|show *next?*", size: 76, time: local - 1.4)
                 .padding(.top, 120)
             HStack(spacing: 12) {
-                Text("Tell me in the comments. The link's there too.").italic()
+                Text("Tell me in the comments. The link's there too.")
                 Image(systemName: "arrow.down").font(.system(size: 26, weight: .light))
                     .offset(y: 6 * sin(max(0, local - 2.3) * 6))
             }
-            .font(serif(34))
+            .font(.system(size: 30))
             .foregroundStyle(Color(white: 0.7))
             .opacity(easeOut((local - 2.3) / 0.4))
             .padding(.top, 40)
             Text("RENDERED BY DESKBAR ITSELF")
-                .font(serif(19, .medium)).tracking(6)
+                .font(.system(size: 16, weight: .semibold)).tracking(5)
                 .foregroundStyle(Color(white: 0.38))
                 .opacity(easeOut((local - 2.8) / 0.5))
                 .padding(.top, 110)

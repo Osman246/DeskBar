@@ -1132,17 +1132,26 @@ final class MacScene: ObservableObject {
 
     /// Records `seconds` of live animation for the demo video, calling `change` with the elapsed
     /// time before each frame. With `intro`, the full opening plays first (snapshot mode only).
-    func recordClip(seconds: Double, scale: CGFloat = 3, intro: Bool = false,
+    func recordClip(seconds: Double, scale: CGFloat = 4, intro: Bool = false,
                     change: (Double) -> Void = { _ in }) async -> [ClipFrame] {
         if intro { wokeSinceLastFull = true; beginIntro() }
+        // One renderer for the whole clip; making one per frame halves the frame rate.
+        let renderer = SCNRenderer(device: MTLCreateSystemDefaultDevice(), options: nil)
+        renderer.scene = scene
+        renderer.pointOfView = cameraNode
+        let pixels = CGSize(width: size.width * scale, height: size.height * scale)
         var frames: [ClipFrame] = []
         let start = Date()
         last = start
         while case let t = Date().timeIntervalSince(start), t <= seconds {
             change(t)
             tick()
-            if let image = still(scale: scale) { frames.append(ClipFrame(time: t, image: image, pills: pills, anchors: portAnchors)) }
-            try? await Task.sleep(for: .milliseconds(4))
+            // Keep one frame per video frame (30 fps); more only costs memory.
+            if t - (frames.last?.time ?? -1) >= 1.0 / 30 {
+                let image = renderer.snapshot(atTime: t, with: pixels, antialiasingMode: .multisampling4X)
+                frames.append(ClipFrame(time: t, image: image, pills: pills, anchors: portAnchors))
+            }
+            try? await Task.sleep(for: .milliseconds(2))
         }
         return frames
     }
