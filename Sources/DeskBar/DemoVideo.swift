@@ -2,7 +2,7 @@ import AVFoundation
 import CoreText
 import SwiftUI
 
-/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a one-minute
+/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>] [--url <download page>]` renders a one-minute
 /// launch video (1080 × 1350, 30 fps, with a quiet sound track) from the real 3D Mac, recorded
 /// live, and the real panel screenshots in docs/images. Captions, menu bar and pointer are drawn
 /// here, cut like a short cinematic edit: black, serif headlines. The first frame already reads,
@@ -16,19 +16,21 @@ import SwiftUI
 @MainActor
 enum DemoVideo {
     /// `open` is only a recording (the 3D Mac's opening, shown under the brand card).
-    enum Part: CaseIterable { case hook, reveal, panel, interact, lid, plug, ports, news, heat, thesis, brand, cta, open }
+    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open }
 
-    static let sequence: [Part] = [.hook, .reveal, .panel, .interact, .lid, .plug, .ports, .news, .heat, .thesis, .brand, .cta]
+    static let sequence: [Part] = [.hook, .dashboard, .lid, .plug, .ports, .news, .heat, .outcome, .thesis, .brand, .cta]
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
-    static let lengths: [Part: Double] = [.hook: 2.75, .reveal: 5.65, .panel: 6.0, .interact: 4.6, .lid: 3.2, .plug: 4.2,
-                                          .ports: 4.8, .news: 6.4, .heat: 6.0, .thesis: 5.2, .brand: 5.2, .cta: 6.0, .open: 0]
+    static let lengths: [Part: Double] = [.hook: 1.85, .dashboard: 13.15, .lid: 2.8, .plug: 3.0, .ports: 4.0, .news: 4.2,
+                                          .heat: 6.0, .outcome: 6.0, .thesis: 7.0, .brand: 5.0, .cta: 7.0, .open: 0]
     static var total: Double { sequence.reduce(0) { $0 + lengths[$1]! } }
     /// When each part starts, for the sound track.
     static func start(of part: Part) -> Double { sequence.prefix { $0 != part }.reduce(0) { $0 + lengths[$1]! } }
     nonisolated(unsafe) static var serif = "Hoefler Text"   // set once before rendering
     nonisolated(unsafe) static var credit: String?
     nonisolated(unsafe) static var creditNote: String?
+    /// The verified download page for the end card (`--url`); without it the card points to the comments.
+    nonisolated(unsafe) static var url: String?
 
     /// Where `t` falls: the part and the time into it.
     static func part(at t: Double) -> (Part, Double) {
@@ -56,6 +58,9 @@ enum DemoVideo {
         if let i = CommandLine.arguments.firstIndex(of: "--credit-note"), i + 1 < CommandLine.arguments.count {
             creditNote = CommandLine.arguments[i + 1]
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--url"), i + 1 < CommandLine.arguments.count {
+            url = CommandLine.arguments[i + 1]
+        }
         print("Headlines in \(serif)")
         let mac = model.mac
         await mac.waitUntilLoaded()
@@ -63,7 +68,9 @@ enum DemoVideo {
         let images = FileManager.default.currentDirectoryPath + "/docs/images/"
         let shots = Shots(panel: NSImage(contentsOfFile: images + "panel-dark.png"),
                           memory: NSImage(contentsOfFile: images + "memory.png"),
-                          battery: NSImage(contentsOfFile: images + "battery.png"))
+                          battery: NSImage(contentsOfFile: images + "battery.png"),
+                          alertPanel: NSImage(contentsOfFile: images + "alert-panel.png"),
+                          alertMemory: NSImage(contentsOfFile: images + "alert-memory.png"))
 
         let url = URL(fileURLWithPath: directory).appendingPathComponent("deskbar-demo.mp4")
         try? FileManager.default.removeItem(at: url)
@@ -119,11 +126,14 @@ enum DemoVideo {
         print("Wrote \(url.path)")
     }
 
-    /// The real panel, as the screenshots in docs/images show it (closed, Memory open, Battery open).
+    /// The real panel, as the screenshots in docs/images show it: closed, Memory open, Battery open, and
+    /// the same demo with memory full (`DESKBAR_DEMO_ALERT=1`), closed and with Memory open.
     struct Shots {
         var panel: NSImage?
         var memory: NSImage?
         var battery: NSImage?
+        var alertPanel: NSImage?
+        var alertMemory: NSImage?
     }
 
     // MARK: Recording the 3D Mac
@@ -168,24 +178,24 @@ enum DemoVideo {
         clips[.open] = await mac.recordClip(seconds: 3.6, intro: true, speed: 0.65)
 
         reset(base)
-        clips[.lid] = await mac.recordClip(seconds: 3.2) { t in
-            let angle = t < 0.3 ? 112 : t < 1.3 ? 112 - 77 * ease((t - 0.3) / 1.0) : t < 1.6 ? 35 : 35 + 77 * ease((t - 1.6) / 1.0)
+        clips[.lid] = await mac.recordClip(seconds: 2.8) { t in
+            let angle = t < 0.2 ? 112 : t < 1.0 ? 112 - 77 * ease((t - 0.2) / 0.8) : t < 1.25 ? 35 : 35 + 77 * ease((t - 1.25) / 0.9)
             mac.simulateLid(angle)
         }
 
         // MagSafe goes in, then the monitors rise around it: power and desk in one beat.
         reset(base)
         var plugged = false, atDesk = false
-        clips[.plug] = await mac.recordClip(seconds: 4.2) { t in
-            if t > 0.4 && !plugged { plugged = true; mac.update(charging) }
-            if t > 1.7 && !atDesk { atDesk = true; mac.update(desk); mac.setMode(.desk) }
+        clips[.plug] = await mac.recordClip(seconds: 3.0) { t in
+            if t > 0.3 && !plugged { plugged = true; mac.update(charging) }
+            if t > 1.2 && !atDesk { atDesk = true; mac.update(desk); mac.setMode(.desk) }
         }
 
         reset(desk)
         var leftSide = false, rightSide = false
-        clips[.ports] = await mac.recordClip(seconds: 4.8) { t in
+        clips[.ports] = await mac.recordClip(seconds: 4.0) { t in
             if !leftSide { leftSide = true; mac.setMode(.ports(.left)) }
-            if t > 2.4 && !rightSide { rightSide = true; mac.setMode(.ports(.right)) }
+            if t > 1.9 && !rightSide { rightSide = true; mac.setMode(.ports(.right)) }
         }
 
         // The screen and the status follow each alert as it arrives (times match `alerts`).
@@ -197,8 +207,8 @@ enum DemoVideo {
             guard next != shown else { return }
             shown = next
             var state = hot
-            state.warning = ["Running hot", "Memory full", "Disk almost full", "Low battery"][next]
-            if next == 3 { state.batteryPercent = 18 }
+            state.warning = ["Running hot", "Disk almost full", "Low battery", "Memory full"][next]
+            if next >= 2 { state.batteryPercent = 18 }
             mac.update(state)
         }
         reset(base)
@@ -303,11 +313,10 @@ private struct DemoFrame: View {
     /// Where the 3D Mac sits.
     static let stage = CGRect(x: 60, y: 430, width: 960, height: 630)
     static let productParts: [DemoVideo.Part] = [.lid, .plug, .ports, .heat]
-    /// Scenes with a headline at the top and a chapter marker at the bottom.
-    static let chapters: [DemoVideo.Part] = [.reveal, .panel, .interact, .lid, .plug, .ports, .heat]
-    /// Parts that open on a hard cut: a white flash and a punch-in. The reveal carries straight on
-    /// from the hook (the click opens the panel), so it doesn't cut.
-    static let cuts: [DemoVideo.Part] = [.panel, .interact, .lid, .plug, .ports, .news, .heat, .thesis, .brand, .cta]
+    /// A flash and punch-in only where a new section starts. Within the product sequences the camera
+    /// moves instead, and the hardware shots cut straight to each other.
+    static let flashes: [DemoVideo.Part] = [.lid, .news, .heat, .thesis, .brand]
+    static let punches: [DemoVideo.Part] = flashes + [.plug, .ports]
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -315,19 +324,17 @@ private struct DemoFrame: View {
             Group {
                 switch part {
                 case .hook: hook
-                case .reveal: reveal
-                case .panel: panelTour
-                case .interact: interact
-                case .thesis: thesis
+                case .dashboard: dashboard
                 case .news: news
+                case .outcome: outcome
+                case .thesis: thesis
                 case .brand: brand
                 case .cta: callToAction
                 default: EmptyView()
                 }
                 if Self.productParts.contains(part) { product }
-                if Self.productParts.contains(part) || part == .panel || part == .interact { caption }
-                if part == .heat { notifications }
-                if Self.chapters.contains(part) { chapter }
+                if Self.productParts.contains(part) { caption }
+                if part == .heat { notifications(at: local).opacity(1) }
             }
             .scaleEffect(punch, anchor: .center)
             menuBar
@@ -338,18 +345,17 @@ private struct DemoFrame: View {
         .clipped()
     }
 
-    /// The zoom on a cut: starts 6% in and settles.
     private var punch: CGFloat {
-        Self.cuts.contains(part) ? 1 + 0.06 * (1 - easeOut(local / 0.35)) : 1
+        Self.punches.contains(part) ? 1 + 0.05 * (1 - easeOut(local / 0.35)) : 1
     }
 
     /// Flash, vignette and the progress line, over everything.
     private var finish: some View {
         ZStack(alignment: .topLeading) {
-            if Self.cuts.contains(part) {
-                Color.white.opacity(0.32 * (1 - clamp(local / 0.12)))
+            if Self.flashes.contains(part) {
+                Color.white.opacity(0.28 * (1 - clamp(local / 0.12)))
             }
-            RadialGradient(colors: [.clear, .black.opacity(0.55)], center: .center, startRadius: 380, endRadius: 900)
+            RadialGradient(colors: [.clear, .black.opacity(0.5)], center: .center, startRadius: 420, endRadius: 920)
             Rectangle().fill(Color.white.opacity(0.85))
                 .frame(width: DemoVideo.size.width * t / DemoVideo.total, height: 3)
                 .offset(y: DemoVideo.size.height - 3)
@@ -360,8 +366,8 @@ private struct DemoFrame: View {
 
     // MARK: Hook
 
-    /// Readable from the very first frame (feeds autoplay muted): the question, with the first of the
-    /// four places you'd check today already on screen. They pile up, then fly into one menu bar item.
+    /// The question and the first window from frame one, under a menu bar that's already there. The
+    /// four places you'd check today pile up, then fly into the one menu bar item.
     private var hook: some View {
         ZStack(alignment: .topLeading) {
             Text("Is your Mac OK?")
@@ -370,13 +376,12 @@ private struct DemoFrame: View {
                 .foregroundStyle(.white)
                 .frame(width: DemoVideo.size.width)
                 .offset(y: 120)
-                .opacity(1 - clamp((local - 2.3) / 0.3))
+                .opacity(1 - clamp((local - 1.45) / 0.3))
             clutter(local + 0.35)
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
     }
 
-    /// The places you'd check today: four windows, then all of them into the menu bar.
     private static let places: [(name: String, symbol: String, centre: CGPoint, angle: Double)] = [
         ("Activity Monitor", "waveform.path.ecg", CGPoint(x: 330, y: 560), -5),
         ("System Settings", "gearshape.fill", CGPoint(x: 740, y: 660), 4),
@@ -385,25 +390,24 @@ private struct DemoFrame: View {
     ]
 
     private func clutter(_ t: Double) -> some View {
-        let collapse = ease((t - 2.6) / 0.45)   // about two seconds with all four on screen
+        let collapse = ease((t - 1.8) / 0.4)
         return ZStack(alignment: .topLeading) {
             Text("TODAY YOU'D CHECK")
                 .font(.system(size: 30, weight: .semibold)).tracking(10)
                 .foregroundStyle(Color(white: 0.7))
                 .frame(width: DemoVideo.size.width)
                 .offset(y: 300)
-                .opacity((1 - collapse))
+                .opacity(1 - collapse)
             ForEach(Array(Self.places.enumerated()), id: \.offset) { i, place in
-                placeWindow(place.name, place.symbol, pop: springy((t - 0.1 - Double(i) * 0.3) / 0.4))
+                placeWindow(place.name, place.symbol, pop: springy((t - 0.1 - Double(i) * 0.22) / 0.35))
                     .rotationEffect(.degrees(place.angle * (1 - collapse)))
                     .scaleEffect(1 - 0.94 * collapse)
                     .position(x: place.centre.x + (Self.itemCentre.x - place.centre.x) * collapse,
                               y: place.centre.y + (Self.itemCentre.y - place.centre.y) * collapse)
                     .opacity(1 - clamp((collapse - 0.85) / 0.15))
             }
-            // The menu bar item lights up as they land.
-            let land = clamp((t - 3.0) / 0.3)
-            if land > 0 {
+            let land = clamp((t - 2.15) / 0.3)
+            if land > 0 && land < 1 {
                 Circle()
                     .strokeBorder(Color.white.opacity(0.8 * (1 - land)), lineWidth: 3)
                     .frame(width: 40 + 160 * land, height: 40 + 160 * land)
@@ -436,11 +440,10 @@ private struct DemoFrame: View {
         .opacity(clamp(pop * 1.8))
     }
 
-    // MARK: Menu bar and cursor
+    // MARK: Menu bar and pointer
 
     private var menuBarShown: Double {
         switch part {
-        case .hook: easeOut((local + 0.35 - 2.75) / 0.3)   // slides in as the windows fly up into it
         case .brand: 1 - ease(local / 0.4)
         case .cta: 0
         default: 1
@@ -453,7 +456,7 @@ private struct DemoFrame: View {
     private var panelOpen: Bool {
         switch part {
         case .hook, .brand, .cta: false
-        case .reveal: local > 0.24
+        case .dashboard: local > 0.04
         default: true
         }
     }
@@ -494,15 +497,16 @@ private struct DemoFrame: View {
         }
         func clicking(_ t: Double) -> Double? { t > 0 && t < 0.45 ? t / 0.45 : nil }
         switch part {
-        case .reveal where local < 1.6:
-            let at = glide(CGPoint(x: 760, y: 420), Self.itemCentre, ease(local / 0.22))
-            return (at, clicking(local - 0.24), Self.itemCentre)
-        case .interact:
+        case .dashboard where local < 1.4:
+            return (glide(CGPoint(x: 700, y: 160), Self.itemCentre, ease(local / 0.06)), clicking(local - 0.04), Self.itemCentre)
+        case .dashboard where local > 9.05:
             let memory = Self.memoryTile, battery = Self.batteryTile
-            if local < 2.4 {
-                return (glide(CGPoint(x: 540, y: 1150), memory, ease((local - 0.3) / 0.6)), clicking(local - 0.95), memory)
+            if local < 10.85 {
+                return (glide(CGPoint(x: 540, y: 1150), memory, ease((local - 9.05) / 0.5)), clicking(local - 9.6), memory)
             }
-            return (glide(memory, battery, ease((local - 2.4) / 0.55)), clicking(local - 3.0), battery)
+            return (glide(memory, battery, ease((local - 10.85) / 0.35)), clicking(local - 11.25), battery)
+        case .outcome where local < 1.2:
+            return (glide(CGPoint(x: 560, y: 1150), Self.topBanner, ease(local / 0.5)), clicking(local - 0.55), Self.topBanner)
         default: return nil
         }
     }
@@ -523,55 +527,38 @@ private struct DemoFrame: View {
                     .scaleEffect((pointer.click ?? 1) < 0.25 ? 0.85 : 1, anchor: .topLeading)
                     .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
                     .offset(x: pointer.at.x + 4, y: pointer.at.y + 4)
-                    .opacity(part == .reveal ? 1 - clamp((local - 1.2) / 0.3) : 1 - leaving)
             }
             .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+            .opacity(part == .dashboard && local < 1.4 ? 1 - clamp((local - 1.0) / 0.3) : part == .outcome ? 1 - clamp((local - 0.9) / 0.3) : 1)
         }
     }
 
-    // MARK: Captions and chapters
+    // MARK: Captions
 
-    private var captionText: (kicker: String, headline: String, line: String) {
+    private var captionText: (headline: String, line: String) {
         switch part {
-        case .reveal: ("One answer", "", "")
-        case .panel: ("The panel", "Everything, *at a glance.*", "One panel, read top to bottom.")
-        case .interact: ("Detail", "Detail *on request.*", "Click any tile to see what's behind it.")
-        case .lid: ("Live", "It mirrors *your* Mac.", "Move the lid, and so does it.")
-        case .plug: ("Power", "Plug in. *It knows.*", "Charger, monitors, the whole desk.")
-        case .ports: ("Ports", "Every port, *labelled.*", "What's plugged in, and where.")
-        case .heat: ("Alerts", "Warns you *early.*", "Heat, memory, disk and battery.")
-        default: ("", "", "")
+        case .lid: ("It mirrors *your* Mac.", "The panel's 3D Mac follows your real lid.")
+        case .plug: ("Plug in. *It knows.*", "Charger and monitors appear as you connect them.")
+        case .ports: ("Every port, *labelled.*", "The same labels you get in DeskBar's ports view.")
+        case .heat: ("Warns you *early.*", "Before heat, memory, disk or battery become a problem.")
+        default: ("", "")
         }
     }
 
     private var caption: some View {
-        let text = captionText
-        return VStack(spacing: 14) {
-            Headline(text: text.headline, size: 84, time: local - 0.08, leave: leaving)
-            Text(text.line)
-                .font(.system(size: 30))
-                .foregroundStyle(Color(white: 0.58))
-                .opacity(easeOut((local - 0.45) / 0.4) * (1 - leaving))
-        }
-        .frame(width: DemoVideo.size.width)
-        .offset(y: 150)
+        topCaption(captionText.headline, captionText.line, time: local, leave: leaving)
     }
 
-    /// "03 / 07  PORTS", like a chapter card in a film.
-    private var chapter: some View {
-        let steps = Self.chapters
-        let number = (steps.firstIndex(of: part) ?? 0) + 1
-        return HStack(spacing: 22) {
-            Text(String(format: "%02d", number)).foregroundStyle(.white)
-            Rectangle().fill(Color(white: 0.35)).frame(width: 60, height: 1.5)
-            Text(String(format: "%02d", steps.count)).foregroundStyle(Color(white: 0.45))
-            Text(captionText.kicker.uppercased()).tracking(7).foregroundStyle(Color(white: 0.55)).padding(.leading, 18)
+    private func topCaption(_ headline: String, _ line: String, time: Double, leave: Double) -> some View {
+        VStack(spacing: 14) {
+            Headline(text: headline, size: 82, time: time - 0.08, leave: leave)
+            Text(line)
+                .font(.system(size: 32))
+                .foregroundStyle(Color(white: 0.66))
+                .opacity(easeOut((time - 0.4) / 0.35) * (1 - leave))
         }
-        .font(.system(size: 23, weight: .medium))
-        .monospacedDigit()
         .frame(width: DemoVideo.size.width)
-        .offset(y: 1210)
-        .opacity(easeOut(local / 0.3) * (1 - leaving))
+        .offset(y: 140)
     }
 
     // MARK: The 3D Mac
@@ -620,7 +607,7 @@ private struct DemoFrame: View {
 
     /// Rings on the ports and labels below, arriving one after another once the camera settles.
     private func portLabels(_ now: MacScene.ClipFrame) -> some View {
-        let side: Ports.Side = local < 2.4 ? .left : .right
+        let side: Ports.Side = local < 1.9 ? .left : .right
         let ports = DemoVideo.ports(DemoVideo.shownPorts).filter { $0.side == side && now.anchors[$0.id] != nil }
         // How long the anchors have been showing.
         let since = clip.reversed().drop { $0.time > local }.prefix { !$0.anchors.isEmpty }.last.map { local - $0.time } ?? 0
@@ -655,25 +642,27 @@ private struct DemoFrame: View {
 
     // MARK: Heat alert
 
-    /// DeskBar's real alerts, arriving one after another and stacking like Notification Centre.
+    /// DeskBar's real alerts, in its own wording (Alerts.swift), arriving one after another and stacking
+    /// like Notification Centre. Memory lands last, on top: that's the one the pointer opens next.
     private static let alerts: [(at: Double, symbol: String, tint: Color, title: String, body: String)] = [
-        (0.6, "thermometer.high", .orange, "Mac running hot", "macOS is slowing the chip down to cool it (95°C)."),
-        (1.9, "memorychip", Color(red: 1, green: 0.72, blue: 0.2), "Memory full", "Apps may slow down. Safari is using 6.4 GB."),
-        (3.2, "internaldrive", Color(red: 0.95, green: 0.36, blue: 0.24), "Disk almost full", "Only 8.6 GB free. Try Clean up in DeskBar."),
-        (4.5, "battery.25percent", Color(red: 0.98, green: 0.42, blue: 0.4), "Battery low", "18% left, about 1h 5m."),
+        (0.6, "thermometer.high", .orange, "Mac running hot", "macOS is slowing the chip down to cool it (95°C). Safari is the busiest app."),
+        (1.9, "internaldrive", Color(red: 0.95, green: 0.36, blue: 0.24), "Disk almost full", "Only 8.6 GB free. Try Clean up in DeskBar."),
+        (3.2, "battery.25percent", Color(red: 0.98, green: 0.42, blue: 0.4), "Battery low", "18% left, about 1h 5m."),
+        (4.5, "memorychip", Color(red: 1, green: 0.72, blue: 0.2), "Memory full", "Apps may slow down. Safari is using 6.0 GB."),
     ]
+    /// Where the newest banner sits, for the pointer.
+    static let topBanner = CGPoint(x: DemoFrame.stage.maxX - 270, y: DemoFrame.stage.minY + 80)
 
-    private var notifications: some View {
+    private func notifications(at time: Double) -> some View {
         let alerts = Self.alerts
         return ZStack(alignment: .topLeading) {
             ForEach(Array(alerts.enumerated()), id: \.offset) { i, alert in
                 // How far newer alerts have pushed this one back into the stack.
-                let depth = alerts[(i + 1)...].reduce(0.0) { $0 + easeOut((local - $1.at) / 0.35) }
-                notification(alert.symbol, alert.tint, alert.title, alert.body, arrival: springy((local - alert.at) / 0.5), depth: depth)
+                let depth = alerts[(i + 1)...].reduce(0.0) { $0 + easeOut((time - $1.at) / 0.35) }
+                notification(alert.symbol, alert.tint, alert.title, alert.body, arrival: springy((time - alert.at) / 0.5), depth: depth)
                     .zIndex(Double(i))
             }
         }
-        .opacity(1 - leaving)
     }
 
     private func notification(_ symbol: String, _ tint: Color, _ title: String, _ body: String, arrival p: Double, depth: Double) -> some View {
@@ -693,12 +682,12 @@ private struct DemoFrame: View {
                 }
                 Text(title).font(.system(size: 26, weight: .semibold)).foregroundStyle(.white)
                 Text(body).font(.system(size: 22)).foregroundStyle(Color(white: 0.8))
-                    .lineLimit(2)
+                    .lineLimit(3)
             }
             .opacity(1 - clamp(depth * 2))   // only the newest one's text shows
         }
         .padding(22)
-        .frame(width: 540, height: 158, alignment: .topLeading)   // one height, so the stack lines up
+        .frame(width: 540, height: 186, alignment: .topLeading)   // one height, so the stack lines up
         .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color(white: 0.17 - 0.03 * min(depth, 2))))
         .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
         .shadow(color: .black.opacity(0.6), radius: 24, y: 10)
@@ -707,189 +696,287 @@ private struct DemoFrame: View {
         .opacity(clamp(p * 5) * (1 - clamp((depth - 2) / 0.6)))   // solid almost at once, so nothing shows through
     }
 
-    // MARK: The real panel
+    // MARK: The dashboard: one continuous shot of the real panel
 
-    /// Where the Memory and Battery tiles land in the interaction shot, in canvas points.
-    static let memoryTile = CGPoint(x: 289, y: 669)
-    static let batteryTile = CGPoint(x: 791, y: 669)
-
-    /// The click on the menu bar opens the real panel beneath it; then a slow zoom onto its verdict.
-    private var reveal: some View {
-        let k: CGFloat = 428 / 680                     // panel shown 428 points wide, under the menu bar item
-        let origin = CGPoint(x: 612, y: 64)
-        let drop = springy((local - 0.3) / 0.45)
-        let zoom = ease((local - 2.7) / 0.8)
-        // Once zoomed, only the top card stays: the rest of the panel fades out below it.
-        let keep = 1 - (1 - 840 / DemoVideo.size.height) * zoom
-        // Zoom so the panel's top card (the 3D Mac and its verdict) fills the middle of the frame.
-        let focus = CGPoint(x: origin.x + 340 * k, y: origin.y + 230 * k)
-        let scale: CGFloat = 1 + zoom
-        let shift = CGSize(width: (540 - focus.x * 2) * zoom, height: (560 - focus.y * 2) * zoom)
-        return ZStack(alignment: .topLeading) {
-            ZStack(alignment: .topLeading) {
-                if let panel = shots.panel {
-                    Image(nsImage: panel).resizable()
-                        .frame(width: 680 * k, height: 1746 * k)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .shadow(color: .black.opacity(0.7), radius: 30, y: 12)
-                        .scaleEffect(0.92 + 0.08 * drop, anchor: .top)
-                        .offset(x: origin.x, y: origin.y - 24 * (1 - drop))
-                        .opacity(clamp(drop * 2))
-                }
-            }
-            .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
-            .scaleEffect(scale, anchor: .topLeading)
-            .offset(shift)
-            .mask {
-                LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: keep),
-                                       .init(color: .clear, location: min(1, keep + 0.04))],
-                               startPoint: .top, endPoint: .bottom)
-            }
-            VStack(alignment: .leading, spacing: 16) {
-                Kicker(text: "Introducing DeskBar", time: local - 0.5, size: 26)
-                Headline(text: "One click.|*One answer.*", size: 84, time: local - 0.6, alignment: .leading)
-                Text("“All good”, or the one\nthing that isn't.")
-                    .font(.system(size: 32))
-                    .foregroundStyle(Color(white: 0.62))
-                    .opacity(easeOut((local - 1.2) / 0.4))
-            }
-            .offset(x: 60, y: 430)
-            .opacity(1 - clamp((local - 2.5) / 0.3))
-            VStack(spacing: 12) {
-                Kicker(text: "The verdict comes first", time: local - 3.4, size: 28)
-                Text("Health, heat and power, summed up in two words.")
-                    .font(.system(size: 30))
-                    .foregroundStyle(Color(white: 0.62))
-                    .opacity(easeOut((local - 3.6) / 0.4))
-            }
-            .frame(width: DemoVideo.size.width)
-            .offset(y: 900)
-            .opacity(1 - leaving)
-        }
-        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
-    }
-
-    /// Sections of the panel screenshot (680 × 1746): their tops and bottoms, and what each is for.
-    private static let sections: [(top: CGFloat, bottom: CGFloat, title: String, detail: String)] = [
-        (20, 440, "A living 3D Mac", "With one verdict on top: “All good”, or what isn't."),
-        (455, 630, "CPU, heat and fans", "Every core at a glance, with a short history."),
-        (645, 880, "Memory, disk, battery", "Plus your Wi-Fi link and latency."),
-        (900, 1270, "Network, sound, display", "Speed test, devices and smart alerts."),
-        (1290, 1600, "Quick actions", "Focus, keep awake, lock and more."),
+    /// Where the Memory and Battery tiles land while the tour frames them, in canvas points.
+    static let memoryTile = CGPoint(x: 231, y: 406)
+    static let batteryTile = CGPoint(x: 849, y: 406)
+    static let tourView = CGRect(x: 60, y: 330, width: 960, height: 720)
+    static let tourScale: CGFloat = 960 / 680
+    /// The tour's stops: when it gets there, which part of the screenshot it centres, and what it says.
+    private static let stops: [(at: Double, centre: CGFloat, title: String, detail: String)] = [
+        (3.4, 230, "A living 3D Mac", "One verdict on top: “All good”, or what isn't."),
+        (4.8, 542, "CPU, heat and fans", "Every core at a glance, with a short history."),
+        (6.2, 1085, "Network, sound, display", "Speed test, devices and smart alerts, one line each."),
+        (7.6, 1445, "Quick actions", "Focus, keep awake, lock and more, one tap each."),
+        (9.0, 908, "Memory, disk, battery", "Plus Wi-Fi. Click any tile for the detail."),
+        (11.35, 1000, "Memory, disk, battery", "Plus Wi-Fi. Click any tile for the detail."),
     ]
 
-    /// The whole panel at a readable size, scrolled section by section, each one outlined and named.
-    private var panelTour: some View {
-        let k: CGFloat = 560 / 680
-        let view = CGRect(x: 70, y: 360, width: 560, height: 800)
-        let beat = 1.1, first = 0.45
-        let i = min(max(Int((local - first) / beat), 0), Self.sections.count - 1)
-        func scroll(_ index: Int) -> CGFloat {
-            let section = Self.sections[index]
-            let centre = (section.top + section.bottom) / 2
-            return min(0, max(view.height - 1746 * k, view.height / 2 - centre * k))
-        }
-        let into = local - first - Double(i) * beat
-        let move = i == 0 ? 1 : ease(into / 0.45)
-        let y = scroll(max(i - 1, 0)) + (scroll(i) - scroll(max(i - 1, 0))) * move
-        let section = Self.sections[i]
-        let frameTop = view.minY + y + section.top * k
-        let frameHeight = (section.bottom - section.top) * k
-        let show = easeOut((into - 0.15) / 0.35)
+    /// Click, the real panel drops under the menu bar item, then the camera flies into it and reads it
+    /// top to bottom; at the tiles, the pointer opens Memory, then Battery, in place.
+    private var dashboard: some View {
+        let k = Self.tourScale, view = Self.tourView
+        // Where the camera is centred, eased from stop to stop.
+        let stops = Self.stops
+        let index = stops.lastIndex { local >= $0.at } ?? 0
+        let from = stops[max(index - 1, 0)].centre, to = stops[index].centre
+        let centre = local < stops[0].at ? stops[0].centre : from + (to - from) * ease((local - stops[index].at) / 0.45)
+        func scroll(_ c: CGFloat) -> CGFloat { min(0, max(view.height - 2316 * k, view.height / 2 - c * k)) }
+        // From the dropped panel (428 wide, under the menu bar item) to the tour's framing.
+        let fly = ease((local - 2.6) / 0.8)
+        let revealK: CGFloat = 428 / 680
+        let scale = revealK + (k - revealK) * fly
+        let x = 612 + (view.minX - 612) * fly
+        let y = 64 + (view.minY + scroll(centre) - 64) * fly
+        let clip = CGRect(x: 612 + (view.minX - 612) * fly, y: 64 + (view.minY - 64) * fly,
+                          width: 428 + (view.width - 428) * fly, height: 1099 + (view.height - 1099) * fly)
+        let drop = springy((local - 0.08) / 0.45)
+        let toMemory = easeOut((local - 9.65) / 0.25), toBattery = easeOut((local - 11.3) / 0.25)
+        let stop = local < 3.4 ? nil : stops[min(index, 4)]
+        let stopIndex = min(index, 4)
+        let label = stop == nil ? 0 : easeOut((local - stops[stopIndex].at - 0.15) / 0.35)
         return ZStack(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
-                if let panel = shots.panel {
-                    Image(nsImage: panel).resizable()
-                        .frame(width: view.width, height: 1746 * k)
-                        .offset(y: y)
+                panelImage(shots.panel, 1746, scale: scale)
+                panelImage(shots.memory, 2144, scale: scale).opacity(toMemory * (1 - toBattery))
+                panelImage(shots.battery, 2316, scale: scale).opacity(toBattery)
+            }
+            .offset(x: x, y: y - 24 * (1 - drop))
+            .scaleEffect(0.92 + 0.08 * drop, anchor: .top)
+            .opacity(clamp(drop * 2))
+            .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+            .mask {
+                RoundedRectangle(cornerRadius: 14 + 8 * fly, style: .continuous)
+                    .frame(width: clip.width, height: clip.height)
+                    .offset(x: clip.minX, y: clip.minY)
+                    .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+            }
+            // Before the fly-in: what it is.
+            VStack(alignment: .leading, spacing: 16) {
+                Kicker(text: "Introducing DeskBar", time: local - 0.3, size: 28)
+                Headline(text: "One click.|*One answer.*", size: 84, time: local - 0.4, alignment: .leading)
+                Text("“All good”, or the one\nthing that isn't.")
+                    .font(.system(size: 34))
+                    .foregroundStyle(Color(white: 0.66))
+                    .opacity(easeOut((local - 0.95) / 0.35))
+            }
+            .offset(x: 60, y: 430)
+            .opacity(1 - clamp((local - 2.4) / 0.3))
+            // The tour's headline, then the detail's.
+            if local > 2.9 && local < 9.0 {
+                topCaption("Everything, *at a glance.*", "One panel, read top to bottom.", time: local - 2.9,
+                           leave: clamp((local - 8.75) / 0.22))
+            } else if local >= 9.0 {
+                topCaption("Detail *on request.*", "Click any tile to see what's behind it.", time: local - 9.0, leave: leaving)
+            }
+            if let stop {
+                VStack(spacing: 6) {
+                    HStack(spacing: 14) {
+                        Text(String(format: "%02d / 05", stopIndex + 1)).monospacedDigit().foregroundStyle(Color(white: 0.5))
+                        Text(stop.title).font(serif(44)).foregroundStyle(.white)
+                    }
+                    .font(.system(size: 24, weight: .semibold))
+                    Text(stop.detail).font(.system(size: 30)).foregroundStyle(Color(white: 0.68))
                 }
+                .frame(width: DemoVideo.size.width)
+                .offset(y: view.maxY + 34)
+                .blur(radius: 8 * (1 - label))
+                .opacity(label * (1 - leaving))
             }
-            .frame(width: view.width, height: view.height, alignment: .topLeading)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
-            .offset(x: view.minX, y: view.minY)
-            .opacity(easeOut(local / 0.4) * (1 - leaving))
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.9), lineWidth: 3)
-                .frame(width: view.width - 8, height: frameHeight)
-                .offset(x: view.minX + 4, y: frameTop)
-                .opacity(show * (1 - leaving))
-            VStack(alignment: .leading, spacing: 10) {
-                Text(String(format: "%02d / %02d", i + 1, Self.sections.count))
-                    .font(.system(size: 22, weight: .semibold)).monospacedDigit().tracking(3)
-                    .foregroundStyle(Color(white: 0.5))
-                Text(section.title).font(serif(46)).foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(section.detail).font(.system(size: 27)).foregroundStyle(Color(white: 0.62))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(width: 370, alignment: .leading)
-            .offset(x: 670 + 16 * (1 - show), y: min(max(frameTop + frameHeight / 2 - 90, 400), 980))
-            .blur(radius: 8 * (1 - show))
-            .opacity(show * (1 - leaving))
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
     }
 
-    /// The pointer clicks Memory, then Battery, and the real panel opens each one.
-    private var interact: some View {
-        let k: CGFloat = 780 / 680
-        let view = CGRect(x: 150, y: 380, width: 780, height: 820)
-        let toMemory = easeOut((local - 1.05) / 0.25), toBattery = easeOut((local - 3.1) / 0.25)
-        func shot(_ image: NSImage?, _ height: CGFloat) -> some View {
-            Group {
-                if let image {
-                    Image(nsImage: image).resizable()
-                        .frame(width: view.width, height: height * k)
-                        .offset(y: -455 * k)
-                }
-            }
+    @ViewBuilder private func panelImage(_ image: NSImage?, _ height: CGFloat, scale: CGFloat) -> some View {
+        if let image {
+            Image(nsImage: image).resizable().frame(width: 680 * scale, height: height * scale)
         }
+    }
+
+    // MARK: News
+
+    /// A short news card in the video's own dark style, then straight into the alerts.
+    /// Reported by PBS NewsHour, 26 June 2026 (Apple announced it on the 25th): Apple raised Mac and
+    /// iPad prices, blaming a memory chip shortage driven by AI; the 1 TB 14-inch MacBook Pro went
+    /// from $1,699 to $1,999.
+    private var news: some View {
+        let card = easeOut(local / 0.4)
+        let strike = easeOut((local - 1.0) / 0.35), price = easeOut((local - 1.25) / 0.3)
+        return VStack(spacing: 40) {
+            VStack(alignment: .leading, spacing: 22) {
+                HStack {
+                    Text("IN THE NEWS").tracking(6)
+                    Spacer()
+                    Text("JUNE 2026").tracking(4)
+                }
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundStyle(Color(white: 0.55))
+                Rectangle().fill(Color.white.opacity(0.18)).frame(height: 1.5)
+                Text("Apple raised Mac prices, blaming an *AI-driven memory shortage.*")
+                    .font(serif(60))
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 18) {
+                    Text("14-inch MacBook Pro, 1 TB").font(.system(size: 30)).foregroundStyle(Color(white: 0.66))
+                    Text("$1,699").font(.system(size: 32, weight: .medium)).foregroundStyle(Color(white: 0.5))
+                        .overlay(alignment: .leading) {
+                            Rectangle().fill(Color.white.opacity(0.8)).frame(height: 2.5).scaleEffect(x: strike, anchor: .leading)
+                        }
+                    Text("→ $1,999").font(.system(size: 36, weight: .bold)).foregroundStyle(.white)
+                        .opacity(price).offset(x: 12 * (1 - price))
+                }
+                Text("Reported by PBS NewsHour").font(.system(size: 24)).foregroundStyle(Color(white: 0.5))
+            }
+            .padding(48)
+            .frame(width: 920, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color(white: 0.09)))
+            .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
+            .scaleEffect(0.96 + 0.04 * card)
+            .opacity(card)
+            Text("Memory is now the expensive part.")
+                .font(serif(52)).italic()
+                .foregroundStyle(.white)
+                .blur(radius: 10 * (1 - easeOut((local - 2.3) / 0.45)))
+                .opacity(easeOut((local - 2.3) / 0.45))
+        }
+        .opacity(1 - leaving)
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
+    }
+
+    // MARK: The alert's outcome
+
+    /// The pointer opens the Memory alert, and the real panel shows what's behind it.
+    private var outcome: some View {
+        let away = ease((local - 0.6) / 0.4)
+        let open = easeOut((local - 0.75) / 0.45)
+        let k = Self.tourScale, view = Self.tourView
+        let scroll = min(0, max(view.height - 2144 * k, view.height / 2 - 905 * k))
+        let push = 1 + 0.03 * local / length
         return ZStack(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
-                shot(shots.panel, 1746)
-                shot(shots.memory, 2144).opacity(toMemory * (1 - toBattery))
-                shot(shots.battery, 2316).opacity(toBattery)
+                if let mac = clips[.heat]?.last {
+                    Image(nsImage: mac.image).resizable()
+                        .frame(width: Self.stage.width, height: Self.stage.height)
+                        .offset(x: Self.stage.minX, y: Self.stage.minY)
+                }
+                notifications(at: 10)
+            }
+            .scaleEffect(1 - 0.06 * away)
+            .opacity(1 - away)
+            ZStack(alignment: .topLeading) {
+                panelImage(shots.alertMemory, 2144, scale: k).offset(y: scroll)
             }
             .frame(width: view.width, height: view.height, alignment: .topLeading)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
-            .offset(x: view.minX, y: view.minY)
-            .opacity(easeOut(local / 0.35) * (1 - leaving))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.orange.opacity(0.35), lineWidth: 2))
+            .scaleEffect((0.9 + 0.1 * open) * push)
+            .offset(x: view.minX, y: view.minY + 40 * (1 - open))
+            .opacity(open * (1 - leaving))
+            if local > 0.9 {
+                topCaption("See exactly *what's using it.*", "Memory full: Safari is using 6.0 GB.", time: local - 0.9, leave: leaving)
+            }
+            if local < 0.9 {
+                topCaption("Warns you *early.*", "Before heat, memory, disk or battery become a problem.", time: 10,
+                           leave: clamp((local - 0.6) / 0.25))
+            }
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+    }
+
+    // MARK: The point of it
+
+    /// The idea, then the real panel's own one sentence: "Memory full", fixed, "All good".
+    private var thesis: some View {
+        let second = local > 3.0
+        let into = second ? local - 3.0 : local
+        let k = Self.tourScale
+        let view = CGRect(x: 60, y: 300, width: 960, height: 600)
+        let scroll = min(0, max(view.height - 1746 * k, view.height / 2 - 230 * k))
+        let fixed = easeOut((into - 1.5) / 0.4)
+        return ZStack {
+            if !second {
+                VStack(spacing: 34) {
+                    Kicker(text: "What building it taught me", time: local - 0.1, size: 30)
+                    Headline(text: "Nobody wants a dashboard.|*They want one sentence.*", size: 76, time: local - 0.15,
+                             leave: clamp((local - 2.8) / 0.2))
+                        .frame(height: 200)
+                }
+                .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
+            } else {
+                ZStack(alignment: .topLeading) {
+                    ZStack(alignment: .topLeading) {
+                        panelImage(shots.alertPanel, 1746, scale: k).offset(y: scroll)
+                        panelImage(shots.panel, 1746, scale: k).offset(y: scroll).opacity(fixed)
+                    }
+                    .frame(width: view.width, height: view.height, alignment: .topLeading)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
+                    .scaleEffect(1 + 0.03 * into / 4)
+                    .offset(x: view.minX, y: view.minY)
+                    .opacity(easeOut(into / 0.3) * (1 - leaving))
+                    VStack(spacing: 12) {
+                        Headline(text: "This is *the sentence.*", size: 72, time: into - 0.3, leave: leaving)
+                        Text("“All good”, or the one thing that isn't.")
+                            .font(.system(size: 34))
+                            .foregroundStyle(Color(white: 0.66))
+                            .opacity(easeOut((into - 0.8) / 0.4) * (1 - leaving))
+                    }
+                    .frame(width: DemoVideo.size.width)
+                    .offset(y: view.maxY + 50)
+                }
+                .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+                Color.white.opacity(0.25 * (1 - clamp(into / 0.1)))
+            }
+        }
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
     }
 
     // MARK: Brand and download
 
-    /// The brand moment: the wordmark over the 3D Mac opening, and what it does well.
+    /// DeskBar's real menu bar item, used as its mark (the app has no other logo).
+    private func mark(_ size: CGFloat) -> some View {
+        HStack(spacing: size * 0.28) {
+            Image(systemName: "thermometer.medium")
+            Text("39°").monospacedDigit()
+        }
+        .font(.system(size: size, weight: .medium))
+        .foregroundStyle(.white)
+        .padding(.horizontal, size * 0.7).padding(.vertical, size * 0.32)
+        .background(Capsule().fill(Color.white.opacity(0.14)))
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.18)))
+    }
+
+    /// The brand moment: the mark and wordmark over the 3D Mac opening, and what it does well.
     private var brand: some View {
         let mac = clips[.open].flatMap { clip in clip.last { $0.time <= local } ?? clip.first }
+        let appear = springy((local - 0.15) / 0.5)
         return ZStack(alignment: .topLeading) {
             if let mac {
                 Image(nsImage: mac.image).resizable()
                     .frame(width: Self.stage.width, height: Self.stage.height)
                     .scaleEffect(1.05 + 0.04 * local / length)
-                    .offset(x: Self.stage.minX, y: 440)
+                    .offset(x: Self.stage.minX, y: 480)
             }
-            VStack(spacing: 6) {
-                Headline(text: "DeskBar.", size: 150, time: local - 0.3)
+            VStack(spacing: 18) {
+                mark(40).scaleEffect(0.7 + 0.3 * appear).opacity(clamp(appear * 1.6))
+                Headline(text: "DeskBar.", size: 170, time: local - 0.3)
                 Text("Your Mac, at a glance.")
-                    .font(serif(46)).italic()
-                    .foregroundStyle(Color(white: 0.68))
+                    .font(serif(48)).italic()
+                    .foregroundStyle(Color(white: 0.72))
                     .opacity(easeOut((local - 0.8) / 0.45))
             }
             .frame(width: DemoVideo.size.width)
-            .offset(y: 120)
+            .offset(y: 90)
             VStack(spacing: 14) {
                 Text("ONE VERDICT  ·  A LIVE 3D MAC")
                 Text("EVERY PORT LABELLED  ·  PRIVATE BY DESIGN")
             }
-            .font(.system(size: 22, weight: .semibold)).tracking(5)
-            .foregroundStyle(Color(white: 0.6))
+            .font(.system(size: 24, weight: .semibold)).tracking(5)
+            .foregroundStyle(Color(white: 0.66))
             .frame(width: DemoVideo.size.width)
-            .offset(y: 1110)
-            .opacity(easeOut((local - 1.6) / 0.5))
+            .offset(y: 1150)
+            .opacity(easeOut((local - 1.4) / 0.5))
         }
         .opacity(1 - leaving)
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
@@ -897,204 +984,64 @@ private struct DemoFrame: View {
 
     /// Where to get it, and who made it.
     private var callToAction: some View {
-        let button = springy((local - 0.9) / 0.45)
+        let button = springy((local - 0.8) / 0.45)
         return VStack(spacing: 0) {
-            Headline(text: "Get *DeskBar.*", size: 136, time: local - 0.1)
-            Text("Free and open source for macOS.")
-                .font(.system(size: 36))
-                .foregroundStyle(Color(white: 0.7))
-                .opacity(easeOut((local - 0.5) / 0.4))
+            mark(36)
+                .opacity(easeOut(local / 0.35))
+            Headline(text: "DeskBar.", size: 150, time: local - 0.1)
                 .padding(.top, 14)
-            HStack(spacing: 16) {
-                Image(systemName: "arrow.down.circle.fill").font(.system(size: 38))
-                Text("Get it free on GitHub").font(.system(size: 36, weight: .semibold))
+            Text("Free and open source for macOS.")
+                .font(.system(size: 38))
+                .foregroundStyle(Color(white: 0.75))
+                .opacity(easeOut((local - 0.45) / 0.4))
+                .padding(.top, 6)
+            HStack(spacing: 18) {
+                Image(systemName: "arrow.down.circle.fill").font(.system(size: 46))
+                Text("Download free on GitHub").font(.system(size: 42, weight: .semibold))
             }
             .foregroundStyle(.black)
-            .padding(.horizontal, 44).padding(.vertical, 24)
+            .padding(.horizontal, 54).padding(.vertical, 30)
             .background(Capsule().fill(Color.white))
             .scaleEffect(0.8 + 0.2 * button)
             .opacity(clamp(button * 1.6))
-            .padding(.top, 70)
-            HStack(spacing: 10) {
-                Text("Link in the comments")
-                Image(systemName: "arrow.down").font(.system(size: 24, weight: .light))
-                    .offset(y: 6 * sin(max(0, local - 1.6) * 6))
+            .padding(.top, 64)
+            Group {
+                if let url = DemoVideo.url {
+                    Text(url).font(.system(size: 36, weight: .medium)).foregroundStyle(.white)
+                } else {
+                    HStack(spacing: 10) {
+                        Text("Link in the comments")
+                        Image(systemName: "arrow.down").font(.system(size: 28, weight: .light))
+                            .offset(y: 6 * sin(max(0, local - 1.5) * 6))
+                    }
+                    .font(.system(size: 36, weight: .medium))
+                    .foregroundStyle(.white)
+                }
             }
-            .font(.system(size: 30))
-            .foregroundStyle(Color(white: 0.72))
-            .opacity(easeOut((local - 1.5) / 0.4))
-            .padding(.top, 28)
+            .opacity(easeOut((local - 1.4) / 0.4))
+            .padding(.top, 30)
             Text("macOS 15 or later  ·  Apple silicon")
-                .font(.system(size: 22, weight: .medium)).tracking(2)
-                .foregroundStyle(Color(white: 0.45))
-                .opacity(easeOut((local - 1.8) / 0.4))
+                .font(.system(size: 26, weight: .medium))
+                .foregroundStyle(Color(white: 0.55))
+                .opacity(easeOut((local - 1.7) / 0.4))
                 .padding(.top, 18)
             if let credit = DemoVideo.credit {
                 Text(credit)
-                    .font(serif(36)).italic()
+                    .font(serif(38)).italic()
                     .foregroundStyle(.white)
                     .opacity(easeOut((local - 2.4) / 0.5))
-                    .padding(.top, 110)
+                    .padding(.top, 90)
             }
             if let note = DemoVideo.creditNote {
                 Text(note)
-                    .font(.system(size: 24))
-                    .foregroundStyle(Color(white: 0.6))
+                    .font(.system(size: 26))
+                    .foregroundStyle(Color(white: 0.62))
                     .opacity(easeOut((local - 2.7) / 0.5))
                     .padding(.top, 10)
             }
-            Text("RENDERED BY DESKBAR ITSELF")
-                .font(.system(size: 16, weight: .semibold)).tracking(5)
-                .foregroundStyle(Color(white: 0.38))
-                .opacity(easeOut((local - 3.0) / 0.5))
-                .padding(.top, DemoVideo.credit == nil ? 110 : 18)
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
     }
-
-    // MARK: Why it matters now
-
-    /// Halfway through, the news that makes it timely (a change of pace that leads into the alerts),
-    /// set as a clipping, then what DeskBar does about it.
-    /// Reported by PBS NewsHour, 26 June 2026 (Apple announced it on the 25th): Apple raised Mac and
-    /// iPad prices, blaming a memory chip shortage driven by AI; the 1 TB 14-inch MacBook Pro went
-    /// from $1,699 to $1,999. The quote is Apple's written statement from that report.
-    private var news: some View {
-        let split = 4.4
-        let second = local > split
-        let into = second ? local - split : local
-        let leave = second ? leaving : clamp((into - (split - 0.25)) / 0.22)
-        return ZStack {
-            if second {
-                VStack(spacing: 34) {
-                    Kicker(text: "What you can do", time: into - 0.05, size: 30)
-                        .opacity(1 - leave)
-                    Headline(text: "Know what's using your memory|*before you pay for more.*", size: 68, time: into - 0.1, leave: leave)
-                        .frame(height: 200)
-                    Text("DeskBar shows memory pressure, the apps behind it,\nand warns you before it's full.")
-                        .font(.system(size: 30))
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(Color(white: 0.62))
-                        .opacity(easeOut((into - 0.9) / 0.4) * (1 - leave))
-                }
-                Color.white.opacity(0.25 * (1 - clamp(into / 0.1)))   // a flash between the two beats
-            } else {
-                clipping(into: into)
-                    .opacity(1 - leave)
-                    .blur(radius: 12 * leave)
-            }
-        }
-        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
-    }
-
-    private static let ink = Color(red: 0.11, green: 0.1, blue: 0.09)
-    private static let paper = Color(red: 0.96, green: 0.945, blue: 0.915)
-
-    /// A newspaper pull-out: it drops in, the old price is struck through, Apple's own words get
-    /// highlighted.
-    private func clipping(into t: Double) -> some View {
-        let drop = springy(t / 0.6)
-        let angle: Double = -1.6 - 2.4 * (1 - drop)
-        let scale: CGFloat = 0.9 + 0.1 * drop + 0.02 * t / 4.4
-        let lift: CGFloat = 40 + 60 * (1 - drop)
-        return VStack(alignment: .leading, spacing: 0) {
-            clippingMasthead
-            Text("Apple raises Mac prices, blaming an AI-driven memory shortage")
-                .font(serif(62, .medium))
-                .foregroundStyle(Self.ink)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 26)
-            priceRow(t)
-                .padding(.top, 22)
-            pullQuote(t)
-                .padding(.top, 34)
-            Text("Apple, in a statement reported by PBS NewsHour")
-                .font(.system(size: 22, weight: .medium))
-                .foregroundStyle(Self.ink.opacity(0.55))
-                .padding(.top, 14)
-        }
-        .padding(.horizontal, 54).padding(.vertical, 46)
-        .frame(width: 880, alignment: .leading)
-        .background(Self.paper)
-        .shadow(color: .black.opacity(0.6), radius: 40, y: 20)
-        .rotationEffect(.degrees(angle))
-        .scaleEffect(scale)
-        .offset(y: lift)
-        .opacity(clamp(drop * 1.6))
-    }
-
-    private var clippingMasthead: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("IN THE NEWS").tracking(5)
-                Spacer()
-                Text("JUNE 2026").tracking(3)
-            }
-            .font(.system(size: 22, weight: .bold))
-            .foregroundStyle(Self.ink.opacity(0.65))
-            Rectangle().fill(Self.ink).frame(height: 3).padding(.top, 16)
-            Rectangle().fill(Self.ink).frame(height: 1).padding(.top, 4)
-        }
-    }
-
-    private func priceRow(_ t: Double) -> some View {
-        let strike = easeOut((t - 1.0) / 0.35)
-        let shown = easeOut((t - 1.25) / 0.3)
-        let red = Color(red: 0.75, green: 0.12, blue: 0.08)
-        return HStack(spacing: 18) {
-            Text("14-inch MacBook Pro, 1 TB").font(.system(size: 28, weight: .medium)).foregroundStyle(Self.ink.opacity(0.7))
-            Text("$1,699")
-                .font(.system(size: 30, weight: .medium))
-                .foregroundStyle(Self.ink.opacity(0.5))
-                .overlay(alignment: .leading) {
-                    Rectangle().fill(red).frame(height: 3).scaleEffect(x: strike, anchor: .leading)
-                }
-            Text("→ $1,999")
-                .font(.system(size: 34, weight: .bold))
-                .foregroundStyle(red)
-                .opacity(shown)
-                .offset(x: 12 * (1 - shown))
-        }
-    }
-
-    private func pullQuote(_ t: Double) -> some View {
-        let sweep = ease((t - 1.8) / 0.8)
-        return Text("“We have never seen a component price increase this much, this quickly.”")
-            .font(serif(44)).italic()
-            .foregroundStyle(Self.ink)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(alignment: .leading) {
-                Rectangle()
-                    .fill(Color(red: 1, green: 0.86, blue: 0.35).opacity(0.75))
-                    .scaleEffect(x: sweep, anchor: .leading)
-            }
-    }
-
-    // MARK: The point of it
-
-    /// What building it taught me: two lines, each with its own beat.
-    private var thesis: some View {
-        let lines = [
-            ("Nobody wants a dashboard.|*They want one sentence.*", 76.0),
-            ("AI made building cheap.|*Deciding what to build* is the job.", 72.0),
-        ]
-        let beat = 2.6
-        let i = min(Int(local / beat), lines.count - 1)
-        let into = local - Double(i) * beat
-        let leave = i == lines.count - 1 ? leaving : clamp((into - (beat - 0.25)) / 0.22)
-        return ZStack {
-            VStack(spacing: 34) {
-                Kicker(text: "What building it taught me", time: local - 0.1, size: 30)
-                    .opacity(1 - leaving)
-                Headline(text: lines[i].0, size: lines[i].1, time: into - 0.08, leave: leave)
-                    .frame(height: 200)
-            }
-            if i > 0 { Color.white.opacity(0.25 * (1 - clamp(into / 0.1))) }   // a flash between lines
-        }
-        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
-    }
-
 }
 
 /// The macOS arrow pointer.
@@ -1163,18 +1110,22 @@ enum DemoSound {
         }
 
         let at = DemoVideo.start(of:)
-        for i in 1...3 { pop(at(.hook) + 0.3 * Double(i) - 0.25) }
-        whoosh(at(.hook) + 2.25, 0.5, 0.5)
-        click(at(.reveal) + 0.24)
-        whoosh(at(.reveal) + 0.3, 0.35, 0.25)
-        whoosh(at(.reveal) + 2.7, 0.8, 0.3)
-        for part in [DemoVideo.Part.panel, .interact, .lid, .plug, .ports, .heat, .thesis] { whoosh(at(part), 0.3, 0.22) }
-        click(at(.interact) + 0.95)
-        click(at(.interact) + 3.0)
-        thud(at(.news) + 0.15)
+        for offset in [0.0, 0.19, 0.41] { pop(at(.hook) + offset) }
+        whoosh(at(.hook) + 1.45, 0.45, 0.5)
+        click(at(.dashboard) + 0.04)
+        whoosh(at(.dashboard) + 0.1, 0.35, 0.25)
+        whoosh(at(.dashboard) + 2.6, 0.8, 0.3)
+        for offset in [4.8, 6.2, 7.6, 9.0] { whoosh(at(.dashboard) + offset, 0.45, 0.12) }
+        click(at(.dashboard) + 9.6)
+        click(at(.dashboard) + 11.25)
+        for part in [DemoVideo.Part.lid, .plug, .ports, .heat] { whoosh(at(part), 0.3, 0.22) }
+        thud(at(.news) + 0.1)
         for offset in [0.6, 1.9, 3.2, 4.5] { chime(at(.heat) + offset) }
+        click(at(.outcome) + 0.55)
+        whoosh(at(.outcome) + 0.65, 0.45, 0.25)
+        whoosh(at(.thesis) + 3.0, 0.35, 0.25)
         swell(at(.brand), 3.0)
-        pop(at(.cta) + 0.95)
+        pop(at(.cta) + 0.8)
         for i in samples.indices { samples[i] = max(-0.9, min(0.9, samples[i])) }
 
         let folder = video.deletingLastPathComponent()

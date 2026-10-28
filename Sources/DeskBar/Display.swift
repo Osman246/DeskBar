@@ -66,8 +66,9 @@ final class DisplayControl: ObservableObject {
                                brightness: level >= 0 ? Double(level) / 100 : saved ?? 1,
                                known: level >= 0 || saved != nil))
         }
-        screens = list
-        nightShift = readNightShift()
+        // Demo mode shows just the built-in screen, Night Shift off: nothing about this Mac's own setup.
+        screens = Demo.on ? list.filter { if case .external = $0.kind { false } else { true } } : list
+        nightShift = Demo.on ? false : readNightShift()
     }
 
     /// Updates the slider at once; the monitor write is debounced so dragging stays smooth.

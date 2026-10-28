@@ -228,7 +228,7 @@ enum Snapshot {
                 print("Wrote side-switch.png from \(frames.count) frames")
                 exit(0)
             }
-            let shots: [(String, String, NSAppearance.Name)] = [
+            let allShots: [(String, String, NSAppearance.Name)] = [
                 ("panel-light", "", .aqua), ("panel-dark", "", .darkAqua),
                 ("cpu", "cpu", .darkAqua), ("memory", "memory", .darkAqua), ("disk", "disk", .darkAqua),
                 ("battery", "battery", .darkAqua), ("network", "Network", .darkAqua),
@@ -237,6 +237,8 @@ enum Snapshot {
                 ("alerts", "Smart alerts", .darkAqua),
                 ("ports-left", "ports-left", .darkAqua), ("ports-right", "ports-right", .darkAqua),
             ]
+            // With DESKBAR_DEMO_ALERT, just the two warning-state shots the demo video uses.
+            let shots = Demo.alert ? [("alert-panel", "", NSAppearance.Name.darkAqua), ("alert-memory", "memory", .darkAqua)] : allShots
             for (file, open, name) in shots {
                 // Pose the 3D Mac for this shot and render it as a still.
                 let stats = model.stats
@@ -245,7 +247,7 @@ enum Snapshot {
                 case "ports-right": model.mac.setMode(.ports(.right))
                 default: model.mac.setMode(.rest); model.mac.follow(tile: open)
                 }
-                model.mac.update(MacHero.state(stats: stats, warning: nil))
+                model.mac.update(MacHero.state(stats: stats, warning: Demo.alert ? "Memory full" : nil))
                 model.mac.settleForStill()
                 MacHero.stillImage = model.mac.still()
                 UserDefaults.standard.set(open.hasPrefix("ports") ? "" : open, forKey: "open")
