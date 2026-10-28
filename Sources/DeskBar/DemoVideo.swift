@@ -21,7 +21,7 @@ enum DemoVideo {
     static let sequence: [Part] = [.hook, .dashboard, .lid, .plug, .ports, .news, .heat, .outcome, .thesis, .brand, .cta]
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
-    static let lengths: [Part: Double] = [.hook: 1.85, .dashboard: 13.15, .lid: 2.8, .plug: 3.0, .ports: 4.0, .news: 4.2,
+    static let lengths: [Part: Double] = [.hook: 2.45, .dashboard: 12.55, .lid: 2.8, .plug: 3.0, .ports: 4.0, .news: 4.2,
                                           .heat: 6.0, .outcome: 6.0, .thesis: 7.0, .brand: 5.0, .cta: 7.0, .open: 0]
     static var total: Double { sequence.reduce(0) { $0 + lengths[$1]! } }
     /// When each part starts, for the sound track.
@@ -378,7 +378,7 @@ struct DemoFrame: View {
                 .foregroundStyle(.white)
                 .frame(width: DemoVideo.size.width)
                 .offset(y: 120)
-                .opacity(1 - clamp((local - 1.45) / 0.3))
+                .opacity(1 - clamp((local - 1.2) / 0.3))
             clutter(local + 0.35)
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
@@ -391,32 +391,49 @@ struct DemoFrame: View {
         ("Battery menu", "battery.75percent", CGPoint(x: 720, y: 960), -4),
     ]
 
+    /// When each window starts pouring into the menu bar item (seconds into the clutter).
+    private static let genieStarts: [Double] = [1.45, 1.68, 1.91, 2.14]
+
     private func clutter(_ t: Double) -> some View {
-        let collapse = ease((t - 1.8) / 0.4)
+        let starts = Self.genieStarts
+        let gone = ease((t - starts[0]) / 0.3)
         return ZStack(alignment: .topLeading) {
             Text("TODAY YOU'D CHECK")
                 .font(.system(size: 30, weight: .semibold)).tracking(10)
                 .foregroundStyle(Color(white: 0.7))
                 .frame(width: DemoVideo.size.width)
                 .offset(y: 300)
-                .opacity(1 - collapse)
+                .opacity(1 - gone)
             ForEach(Array(Self.places.enumerated()), id: \.offset) { i, place in
-                placeWindow(place.name, place.symbol, pop: springy((t - 0.1 - Double(i) * 0.22) / 0.35))
-                    .rotationEffect(.degrees(place.angle * (1 - collapse)))
-                    .scaleEffect(1 - 0.94 * collapse)
-                    .position(x: place.centre.x + (Self.itemCentre.x - place.centre.x) * collapse,
-                              y: place.centre.y + (Self.itemCentre.y - place.centre.y) * collapse)
-                    .opacity(1 - clamp((collapse - 0.85) / 0.15))
+                genie(placeWindow(place.name, place.symbol, pop: springy((t - 0.1 - Double(i) * 0.22) / 0.35)),
+                      from: place.centre, angle: place.angle, progress: clamp((t - starts[i]) / 0.55))
             }
-            let land = clamp((t - 2.15) / 0.3)
-            if land > 0 && land < 1 {
-                Circle()
-                    .strokeBorder(Color.white.opacity(0.8 * (1 - land)), lineWidth: 3)
-                    .frame(width: 40 + 160 * land, height: 40 + 160 * land)
-                    .position(Self.itemCentre)
+            // The menu bar item answers each one as it lands.
+            ForEach(0..<starts.count, id: \.self) { i in
+                let land = clamp((t - starts[i] - 0.5) / 0.3)
+                if land > 0 && land < 1 {
+                    Circle()
+                        .strokeBorder(Color.white.opacity(0.75 * (1 - land)), lineWidth: 3)
+                        .frame(width: 40 + 120 * land, height: 40 + 120 * land)
+                        .position(Self.itemCentre)
+                }
             }
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+    }
+
+    /// The macOS genie: the window tips back and narrows towards the menu bar item, stretches, then
+    /// pours into it.
+    private func genie(_ window: some View, from: CGPoint, angle: Double, progress c: Double) -> some View {
+        let path = c * c   // accelerates into the item
+        let to = Self.itemCentre
+        return window
+            .rotationEffect(.degrees(angle * (1 - c)))
+            .rotation3DEffect(.degrees(58 * sin(.pi / 2 * min(1, c * 1.6))), axis: (x: 1, y: 0, z: 0),
+                              anchor: .bottom, perspective: 0.55)
+            .scaleEffect(x: 1 - 0.94 * pow(c, 1.4), y: 1 + 0.5 * sin(.pi * c) - 0.96 * pow(c, 1.8), anchor: .top)
+            .position(x: from.x + (to.x - from.x) * path, y: from.y + (to.y - from.y) * path)
+            .opacity(1 - clamp((c - 0.9) / 0.1))
     }
 
     /// A small macOS-style window: traffic lights, an icon and the app's name.
@@ -501,8 +518,9 @@ struct DemoFrame: View {
         switch part {
         case .dashboard where local < 1.4:
             return (glide(CGPoint(x: 700, y: 160), Self.itemCentre, ease(local / 0.06)), clicking(local - 0.04), Self.itemCentre)
-        case .dashboard where local > 8.3:
-            let tiles = [Self.memoryTile, Self.diskTile, Self.batteryTile], clicks = Self.tileClicks
+        case .dashboard where local > 7.65:
+            let f = Self.dashboardFraming(local), clicks = Self.tileClicks
+            let tiles = Self.tileX.map { f.point($0, Self.tileY) }
             let i = clicks.lastIndex { local >= $0 - 0.55 } ?? 0
             let start = i == 0 ? CGPoint(x: 540, y: 1150) : tiles[i - 1]
             return (glide(start, tiles[i], ease((local - (clicks[i] - 0.55)) / 0.45)), clicking(local - clicks[i]), tiles[i])
@@ -700,63 +718,111 @@ struct DemoFrame: View {
         .opacity(clamp(p * 5) * (1 - clamp((depth - 2) / 0.6)))   // solid almost at once, so nothing shows through
     }
 
+    // MARK: Framing the real panel
+
+    /// Where a stretch of a panel screenshot sits on screen: always whole, centred and as large as fits.
+    struct Framing {
+        var x: CGFloat, y: CGFloat, scale: CGFloat, top: CGFloat, bottom: CGFloat
+        var rect: CGRect { CGRect(x: x, y: y, width: 680 * scale, height: (bottom - top) * scale) }
+        /// A point in screenshot pixels, on screen.
+        func point(_ px: CGFloat, _ py: CGFloat) -> CGPoint { CGPoint(x: x + px * scale, y: y + (py - top) * scale) }
+
+        /// Rows `top`–`bottom` of the screenshot, centred in the band below the headline.
+        static func fit(_ top: CGFloat, _ bottom: CGFloat, centreY: CGFloat = 712, maxHeight: CGFloat = 700) -> Framing {
+            let scale = min(900 / 680, maxHeight / (bottom - top))
+            return Framing(x: (1080 - 680 * scale) / 2, y: centreY - (bottom - top) * scale / 2, scale: scale, top: top, bottom: bottom)
+        }
+
+        static func mix(_ a: Framing, _ b: Framing, _ p: Double) -> Framing {
+            let p = CGFloat(p)
+            func m(_ u: CGFloat, _ v: CGFloat) -> CGFloat { u + (v - u) * p }
+            return Framing(x: m(a.x, b.x), y: m(a.y, b.y), scale: m(a.scale, b.scale), top: m(a.top, b.top), bottom: m(a.bottom, b.bottom))
+        }
+    }
+
+    /// The panel's sections (rows of the 680-wide screenshots), padded a little so they read as cards.
+    static let macCard: (CGFloat, CGFloat) = (14, 446), cpuCard: (CGFloat, CGFloat) = (447, 639)
+    static let rowsCard: (CGFloat, CGFloat) = (893, 1285), actionsCard: (CGFloat, CGFloat) = (1283, 1613)
+    static let tilesCard: (CGFloat, CGFloat) = (637, 895)
+    /// Where each tile's detail ends once it's open (memory, disk, battery).
+    static let detailEnds: [CGFloat] = [1179, 1105, 1351]
+    static let tileX: [CGFloat] = [114, 340, 566], tileY: CGFloat = 709
+
+    @ViewBuilder private func framed(_ images: [(NSImage?, CGFloat, Double)], _ f: Framing, radius: CGFloat = 22,
+                                     glow: Double = 0) -> some View {
+        let rect = f.rect
+        ZStack(alignment: .topLeading) {
+            ForEach(Array(images.enumerated()), id: \.offset) { _, layer in
+                expanding(layer.0, layer.1, scale: f.scale, wipe: layer.2)
+            }
+        }
+        .offset(x: f.x, y: f.y - f.top * f.scale)
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+        .mask {
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .frame(width: rect.width, height: rect.height)
+                .offset(x: rect.minX, y: rect.minY)
+                .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+        }
+        .overlay(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.1 + 0.6 * glow), lineWidth: 1.5 + 3 * glow)
+                .frame(width: rect.width, height: rect.height)
+                .shadow(color: Color.green.opacity(0.4 * glow), radius: 36 * glow)
+                .offset(x: rect.minX, y: rect.minY)
+        }
+    }
+
     // MARK: The dashboard: one continuous shot of the real panel
 
-    /// The tiles while the tour frames them, in canvas points.
-    static let memoryTile = CGPoint(x: 225, y: 484)
-    static let diskTile = CGPoint(x: 540, y: 484)
-    static let batteryTile = CGPoint(x: 855, y: 484)
-    static let tourView = CGRect(x: 60, y: 360, width: 960, height: 700)
-    static let tourScale: CGFloat = 960 / 680
     /// Clicks on the tiles, in seconds into the dashboard.
-    static let tileClicks: [Double] = [8.85, 10.25, 11.65]
-    /// The tour's stops: when it gets there, which part of the screenshot it centres, and what it says.
-    private static let stops: [(at: Double, centre: CGFloat, title: String, detail: String)] = [
-        (3.3, 230, "A living 3D Mac", "One verdict on top: “All good”, or what isn't."),
-        (4.5, 542, "CPU, heat and fans", "Every core at a glance, with a short history."),
-        (5.7, 1085, "Network, sound, display", "Speed test, devices and smart alerts, one line each."),
-        (6.9, 1445, "Quick actions", "Focus, keep awake, lock and more, one tap each."),
-        (8.1, 860, "Memory, disk, battery", "Click any tile for what's behind it."),
+    static let tileClicks: [Double] = [8.2, 9.6, 11.0]
+    /// The tour's stops: when it gets there, which section it frames, and what it says.
+    private static let stops: [(at: Double, card: (CGFloat, CGFloat), title: String, detail: String)] = [
+        (3.1, macCard, "A living 3D Mac", "One verdict on top: “All good”, or what isn't."),
+        (4.2, cpuCard, "CPU, heat and fans", "Every core at a glance, with a short history."),
+        (5.3, rowsCard, "Network, sound, display", "Speed test, devices and smart alerts, one line each."),
+        (6.4, actionsCard, "Quick actions", "Focus, keep awake, lock and more, one tap each."),
+        (7.5, tilesCard, "Memory, disk, battery", "Click any tile for what's behind it."),
     ]
 
-    /// Click, the real panel drops under the menu bar item, then the camera flies into it and reads it
-    /// top to bottom; back at the tiles, the pointer opens Memory, Disk and Battery in place.
-    private var dashboard: some View {
-        let k = Self.tourScale, view = Self.tourView, stops = Self.stops
-        let index = stops.lastIndex { local >= $0.at } ?? 0
-        let from = stops[max(index - 1, 0)].centre, to = stops[index].centre
-        // The last move goes back up the panel, so it takes longer.
-        let moveTime = index == stops.count - 1 ? 0.75 : 0.45
-        let centre = local < stops[0].at ? stops[0].centre : from + (to - from) * ease((local - stops[index].at) / moveTime)
-        let scroll = min(0, max(view.height - 2316 * k, view.height / 2 - centre * k))
-        // One move from the dropped panel (under the menu bar item) to the tour's framing.
-        let fly = ease((local - 2.4) / 0.8)
-        let s0: CGFloat = 428 / 680
+    /// Where the panel is at a moment of the dashboard shot.
+    static func dashboardFraming(_ local: Double) -> Framing {
+        let stops = Self.stops
         let drop = springy((local - 0.08) / 0.45)
-        let scale = s0 + (k - s0) * fly
-        let px = 612 + (view.minX - 612) * fly
-        let py = (64 - 24 * (1 - drop)) + (view.minY + scroll - 64) * fly
-        let clip = CGRect(x: 612 + (view.minX - 612) * fly, y: 64 + (view.minY - 64) * fly,
-                          width: 428 + (view.width - 428) * fly, height: 1099 + (view.height - 1099) * fly)
-        // Each tile click expands its detail below the tiles, like the real panel.
-        let wipes = Self.tileClicks.map { ease((local - $0 - 0.08) / 0.4) }
+        let dropped = Framing(x: 612, y: 64 - 24 * (1 - drop), scale: 428 / 680, top: 0, bottom: 1746)
+        func fit(_ card: (CGFloat, CGFloat)) -> Framing { Framing.fit(card.0, card.1) }
+        let index = stops.lastIndex { local >= $0.at } ?? -1
+        var target: Framing
+        if index < 0 {
+            target = fit(stops[0].card)
+        } else {
+            let from = index == 0 ? fit(stops[0].card) : fit(stops[index - 1].card)
+            target = Framing.mix(from, fit(stops[index].card), ease((local - stops[index].at) / 0.55))
+        }
+        // Each tile click grows the frame down to the end of that tile's detail.
+        if index == stops.count - 1 {
+            var bottom = Self.tilesCard.1
+            for (i, click) in Self.tileClicks.enumerated() {
+                bottom += (Self.detailEnds[i] - bottom) * CGFloat(ease((local - click - 0.08) / 0.45))
+            }
+            target = Framing.mix(target, Framing.fit(Self.tilesCard.0, bottom), local >= stops[index].at + 0.55 ? 1 : 0)
+        }
+        return Framing.mix(dropped, target, ease((local - 2.2) / 0.8))
+    }
+
+    /// Click, the real panel drops under the menu bar item, then the camera flies into it and frames
+    /// each section whole; back at the tiles, the pointer opens Memory, Disk and Battery in place.
+    private var dashboard: some View {
+        let stops = Self.stops
+        let index = stops.lastIndex { local >= $0.at } ?? 0
+        let f = Self.dashboardFraming(local)
+        let wipes = Self.tileClicks.map { ease((local - $0 - 0.08) / 0.45) }
         let label = local < stops[0].at ? 0 : easeOut((local - stops[index].at - 0.15) / 0.35)
         return ZStack(alignment: .topLeading) {
-            ZStack(alignment: .topLeading) {
-                panelImage(shots.panel, 1746, scale: scale)
-                expanding(shots.memory, 2144, scale: scale, wipe: wipes[0])
-                expanding(shots.disk, 2070, scale: scale, wipe: wipes[1])
-                expanding(shots.battery, 2316, scale: scale, wipe: wipes[2])
-            }
-            .offset(x: px, y: py)
-            .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
-            .mask {
-                RoundedRectangle(cornerRadius: 14 + 8 * fly, style: .continuous)
-                    .frame(width: clip.width, height: clip.height)
-                    .offset(x: clip.minX, y: clip.minY)
-                    .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
-            }
-            .opacity(clamp(drop * 2))
+            framed([(shots.panel, 1746, 1), (shots.memory, 2144, wipes[0]), (shots.disk, 2070, wipes[1]),
+                    (shots.battery, 2316, wipes[2])], f, radius: 14 + 8 * CGFloat(ease((local - 2.2) / 0.8)))
+                .opacity(clamp(springy((local - 0.08) / 0.45) * 2))
             // Before the fly-in: what it is.
             VStack(alignment: .leading, spacing: 16) {
                 Kicker(text: "Introducing DeskBar", time: local - 0.3, size: 28)
@@ -767,12 +833,12 @@ struct DemoFrame: View {
                     .opacity(easeOut((local - 0.95) / 0.35))
             }
             .offset(x: 60, y: 430)
-            .opacity(1 - clamp((local - 2.2) / 0.3))
-            if local > 2.7 && local < 8.1 {
-                topCaption("Everything, *at a glance.*", "One panel, read top to bottom.", time: local - 2.7,
-                           leave: clamp((local - 7.85) / 0.22))
-            } else if local >= 8.1 {
-                topCaption("Detail *on request.*", "Click any tile to see what's behind it.", time: local - 8.1, leave: leaving)
+            .opacity(1 - clamp((local - 2.0) / 0.3))
+            if local > 2.5 && local < 7.5 {
+                topCaption("Everything, *at a glance.*", "One panel, section by section.", time: local - 2.5,
+                           leave: clamp((local - 7.25) / 0.22))
+            } else if local >= 7.5 {
+                topCaption("Detail *on request.*", "Click any tile to see what's behind it.", time: local - 7.5, leave: leaving)
             }
             if local >= stops[0].at {
                 let stop = stops[index]
@@ -785,17 +851,20 @@ struct DemoFrame: View {
                     Text(stop.detail).font(.system(size: 30)).foregroundStyle(Color(white: 0.68))
                 }
                 .frame(width: DemoVideo.size.width)
-                .offset(y: view.maxY + 34)
+                .offset(y: 1110)
                 .blur(radius: 8 * (1 - label))
-                .opacity(label * (1 - leaving))
+                .opacity(label * (1 - leaving) * (local > 8.0 ? 1 - clamp((local - 8.0) / 0.3) : 1))
             }
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
     }
 
-    /// A tile's expanded view, revealed downward from the bottom of the tiles as `wipe` goes 0 → 1.
+    /// A screenshot layer, revealed downward from the bottom of the tiles as `wipe` goes 0 → 1
+    /// (1 shows it all).
     @ViewBuilder private func expanding(_ image: NSImage?, _ height: CGFloat, scale: CGFloat, wipe: Double) -> some View {
-        if wipe > 0 {
+        if wipe >= 1 {
+            panelImage(image, height, scale: scale)
+        } else if wipe > 0 {
             let edge = (780 + (height - 780) * wipe) * scale
             panelImage(image, height, scale: scale)
                 .mask(alignment: .top) {
@@ -868,9 +937,7 @@ struct DemoFrame: View {
     private var outcome: some View {
         let away = ease((local - 0.55) / 0.3)
         let open = easeOut((local - 0.85) / 0.45)
-        let k = Self.tourScale, view = Self.tourView
-        let scroll = min(0, max(view.height - 2144 * k, view.height / 2 - 860 * k))
-        let push = 1 + 0.03 * local / length
+        let f = Framing.fit(Self.tilesCard.0, Self.detailEnds[0])
         return ZStack(alignment: .topLeading) {
             if away < 1 {
                 ZStack(alignment: .topLeading) {
@@ -887,15 +954,10 @@ struct DemoFrame: View {
                 .opacity(1 - away)
             }
             if open > 0 {
-                ZStack(alignment: .topLeading) {
-                    panelImage(shots.alertMemory, 2144, scale: k).offset(y: scroll)
-                }
-                .frame(width: view.width, height: view.height, alignment: .topLeading)
-                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
-                .scaleEffect((0.94 + 0.06 * open) * push)
-                .offset(x: view.minX, y: view.minY + 40 * (1 - open))
-                .opacity(open * (1 - leaving))
+                framed([(shots.alertMemory, 2144, 1)], f)
+                    .scaleEffect(0.95 + 0.05 * open + 0.02 * local / length)
+                    .offset(y: 40 * (1 - open))
+                    .opacity(open * (1 - leaving))
                 topCaption("See exactly *what's using it.*", "Memory full: Safari is using 6.0 GB.", time: local - 0.9, leave: leaving)
             }
         }
@@ -908,9 +970,7 @@ struct DemoFrame: View {
     private var thesis: some View {
         let second = local > 3.0
         let into = second ? local - 3.0 : local
-        let k = Self.tourScale
-        let view = CGRect(x: 60, y: 300, width: 960, height: 600)
-        let scroll = min(0, max(view.height - 1746 * k, view.height / 2 - 230 * k))
+        let f = Framing.fit(Self.macCard.0, Self.macCard.1, centreY: 600)
         let fixed = into >= 1.5
         let glow = into >= 1.5 ? 1 - clamp((into - 1.5) / 0.6) : 0
         return ZStack {
@@ -924,16 +984,9 @@ struct DemoFrame: View {
                 .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
             } else {
                 ZStack(alignment: .topLeading) {
-                    ZStack(alignment: .topLeading) {
-                        panelImage(fixed ? shots.panel : shots.alertPanel, 1746, scale: k).offset(y: scroll)
-                    }
-                    .frame(width: view.width, height: view.height, alignment: .topLeading)
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.white.opacity(0.1 + 0.6 * glow), lineWidth: 2 + 3 * glow))
-                    .shadow(color: Color.green.opacity(0.35 * glow), radius: 40 * glow)
-                    .scaleEffect(1 + 0.03 * into / 4 + 0.015 * glow)
-                    .offset(x: view.minX, y: view.minY)
-                    .opacity(easeOut(into / 0.3) * (1 - leaving))
+                    framed([(fixed ? shots.panel : shots.alertPanel, 1746, 1)], f, glow: glow)
+                        .scaleEffect(1 + 0.03 * into / 4 + 0.015 * glow)
+                        .opacity(easeOut(into / 0.3) * (1 - leaving))
                     VStack(spacing: 12) {
                         Headline(text: "This is *the sentence.*", size: 72, time: into - 0.3, leave: leaving)
                         Text("“All good”, or the one thing that isn't.")
@@ -942,7 +995,7 @@ struct DemoFrame: View {
                             .opacity(easeOut((into - 0.8) / 0.4) * (1 - leaving))
                     }
                     .frame(width: DemoVideo.size.width)
-                    .offset(y: view.maxY + 50)
+                    .offset(y: f.rect.maxY + 50)
                 }
                 .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
                 Color.white.opacity(0.25 * (1 - clamp(into / 0.1)))
@@ -1129,12 +1182,12 @@ enum DemoSound {
         }
 
         let at = DemoVideo.start(of:)
-        for offset in [0.0, 0.19, 0.41] { pop(at(.hook) + offset) }
-        whoosh(at(.hook) + 1.45, 0.45, 0.5)
+        for i in 0..<4 { pop(at(.hook) + 0.22 * Double(i) - 0.25) }
+        for start in [1.45, 1.68, 1.91, 2.14] { whoosh(at(.hook) + start - 0.35, 0.4, 0.22); pop(at(.hook) + start + 0.05) }
         click(at(.dashboard) + 0.04)
         whoosh(at(.dashboard) + 0.1, 0.35, 0.25)
-        whoosh(at(.dashboard) + 2.4, 0.8, 0.3)
-        for offset in [4.5, 5.7, 6.9, 8.1] { whoosh(at(.dashboard) + offset, 0.45, 0.12) }
+        whoosh(at(.dashboard) + 2.2, 0.8, 0.3)
+        for offset in [4.2, 5.3, 6.4, 7.5] { whoosh(at(.dashboard) + offset, 0.45, 0.12) }
         for offset in DemoFrame.tileClicks { click(at(.dashboard) + offset) }
         for part in [DemoVideo.Part.lid, .plug, .ports, .heat] { whoosh(at(part), 0.3, 0.22) }
         thud(at(.news) + 0.1)
