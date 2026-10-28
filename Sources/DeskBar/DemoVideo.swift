@@ -1,18 +1,24 @@
 import AVFoundation
+import CoreText
 import SwiftUI
 
-/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video` renders a 42-second launch video
-/// (1080 × 1350, 30 fps) from the real 3D Mac, recorded live, and the panel screenshot in
-/// docs/images. Everything else (captions, menu bar, cursor) is drawn here.
+/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 42-second
+/// launch video (1080 × 1350, 30 fps) from the real 3D Mac, recorded live, and the panel screenshot
+/// in docs/images. Everything else (captions, menu bar, cursor) is drawn here, cut like a short
+/// cinematic edit: black, film grain, serif headlines.
+///
+/// The headlines use EB Garamond (SIL Open Font License) when its .ttf files are in the `--fonts`
+/// directory, and macOS's Hoefler Text otherwise.
 @MainActor
 enum DemoVideo {
     enum Part: CaseIterable { case hook, menuBar, open, panel, lid, plug, ports, desk, heat, actions, end }
 
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
-    static let lengths: [Part: Double] = [.hook: 3.0, .menuBar: 1.8, .open: 3.8, .panel: 5.0, .lid: 3.8, .plug: 4.0,
-                                          .ports: 5.4, .desk: 3.6, .heat: 3.4, .actions: 3.4, .end: 4.6]
+    static let lengths: [Part: Double] = [.hook: 3.4, .menuBar: 2.0, .open: 3.6, .panel: 5.0, .lid: 3.8, .plug: 4.0,
+                                          .ports: 5.4, .desk: 3.6, .heat: 3.4, .actions: 3.4, .end: 4.8]
     static var total: Double { lengths.values.reduce(0, +) }
+    nonisolated(unsafe) static var serif = "Hoefler Text"   // set once before rendering
 
     /// Where `t` falls: the part and the time into it.
     static func part(at t: Double) -> (Part, Double) {
@@ -26,10 +32,20 @@ enum DemoVideo {
     }
 
     static func make(model: AppModel, to directory: String) async {
+        if let i = CommandLine.arguments.firstIndex(of: "--fonts"), i + 1 < CommandLine.arguments.count {
+            let folder = URL(fileURLWithPath: CommandLine.arguments[i + 1])
+            let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+            for file in files where file.pathExtension == "ttf" || file.pathExtension == "otf" {
+                CTFontManagerRegisterFontsForURL(file as CFURL, .process, nil)
+            }
+            if NSFontManager.shared.availableFontFamilies.contains("EB Garamond") { serif = "EB Garamond" }
+        }
+        print("Headlines in \(serif)")
         let mac = model.mac
         await mac.waitUntilLoaded()
         let clips = await record(mac)
         let panel = NSImage(contentsOfFile: FileManager.default.currentDirectoryPath + "/docs/images/panel-dark.png")
+        let grain = (0..<4).compactMap { _ in Self.grain() }
 
         let url = URL(fileURLWithPath: directory).appendingPathComponent("deskbar-demo.mp4")
         try? FileManager.default.removeItem(at: url)
@@ -37,7 +53,7 @@ enum DemoVideo {
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: Int(size.width), AVVideoHeightKey: Int(size.height),
-            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 14_000_000,
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 16_000_000,
                                               AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel],
         ])
         input.expectsMediaDataInRealTime = false
@@ -53,7 +69,7 @@ enum DemoVideo {
         let stills = Set(stride(from: 0.6, to: total, by: 1.5).map { Int($0 * fps) })
         for index in 0..<frames {
             let t = Double(index) / fps
-            let view = DemoFrame(t: t, clips: clips, panel: panel)
+            let view = DemoFrame(t: t, clips: clips, panel: panel, grain: grain.isEmpty ? nil : grain[index % grain.count])
                 .frame(width: size.width, height: size.height)
                 .environment(\.colorScheme, .dark)
             let renderer = ImageRenderer(content: view)
@@ -83,9 +99,23 @@ enum DemoVideo {
         print(writer.status == .completed ? "Wrote \(url.path)" : "Video failed: \(writer.error?.localizedDescription ?? "?")")
     }
 
+    /// A frame of film grain at half resolution; it's drawn scaled up, so the grain reads at phone size.
+    private static func grain() -> CGImage? {
+        let w = Int(size.width) / 2, h = Int(size.height) / 2
+        var pixels = [UInt8](repeating: 0, count: w * h)
+        for i in pixels.indices { pixels[i] = UInt8.random(in: 0...255) }
+        guard let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
+        return CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: w,
+                       space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGBitmapInfo(rawValue: 0),
+                       provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+    }
+
     // MARK: Recording the 3D Mac
 
-    /// The ports as the video shows them; anything not listed is empty.
+    /// The ports the video shows connected; anything not listed is empty.
+    static let shownPorts = ["Port-MagSafe 3@1": "Charging · 70 W", "Port-USB-C@2": "Display · 4K",
+                             "Port-USB-C@1": "Display · 4K", "Port-USB-C@4": "SSD · 1 TB", "Port-SD Card@1": "SD card · 128 GB"]
+
     static func ports(_ connected: [String: String]) -> [Ports.Port] {
         Ports.layout.map {
             Ports.Port(id: $0.id, name: $0.name, side: $0.side, z: $0.z,
@@ -102,8 +132,7 @@ enum DemoVideo {
         charging.magSafeConnected = true
         charging.ports = ports(["Port-MagSafe 3@1": "Charging · 70 W"])
         var desk = charging
-        desk.ports = ports(["Port-MagSafe 3@1": "Charging · 70 W", "Port-USB-C@2": "Display · 4K",
-                            "Port-USB-C@1": "Display · 4K", "Port-USB-C@4": "SSD · 1 TB", "Port-SD Card@1": "SD card · 128 GB"])
+        desk.ports = ports(shownPorts)
         desk.externalDisplays = 2
         desk.leftMonitor = true
         desk.rightMonitor = true
@@ -119,7 +148,7 @@ enum DemoVideo {
         }
 
         reset(base)
-        clips[.open] = await mac.recordClip(seconds: 3.8, intro: true)
+        clips[.open] = await mac.recordClip(seconds: 3.6, intro: true)
 
         reset(base)
         clips[.lid] = await mac.recordClip(seconds: 3.8) { t in
@@ -171,162 +200,184 @@ private func springy(_ x: Double) -> Double {
     return 1 + c3 * pow(x - 1, 3) + c1 * pow(x - 1, 2)
 }
 
+private func serif(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+    .custom(DemoVideo.serif, size: size).weight(weight)
+}
+
+// MARK: - Headlines
+
+/// A headline that arrives word by word, each word sharpening out of a blur. Words wrapped in
+/// `*` are set in italic; `|` breaks the line.
+private struct Headline: View {
+    let text: String
+    let size: CGFloat
+    let time: Double         // seconds since it started
+    var leave: Double = 0    // 0…1 as it blurs away
+    var alignment: HorizontalAlignment = .center
+
+    var body: some View {
+        // Words with their italic flag; an italic span runs from a word starting with * to one ending with *.
+        var inItalic = false
+        let lines: [[(String, Bool)]] = text.split(separator: "|").map { line in
+            line.split(separator: " ").map { raw in
+                let word = String(raw)
+                if word.hasPrefix("*") { inItalic = true }
+                let entry = (word.replacingOccurrences(of: "*", with: ""), inItalic)
+                if word.hasSuffix("*") { inItalic = false }
+                return entry
+            }
+        }
+        var index = 0
+        return VStack(alignment: alignment, spacing: size * 0.06) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, words in
+                HStack(alignment: .firstTextBaseline, spacing: size * 0.24) {
+                    ForEach(Array(words.enumerated()), id: \.offset) { _, entry in
+                        let i = { defer { index += 1 }; return index }()
+                        let p = easeOut((time - Double(i) * 0.09) / 0.5)
+                        Text(entry.0)
+                            .font(serif(size, .regular))
+                            .italic(entry.1)
+                            .fixedSize()
+                            .foregroundStyle(Color.white)
+                            .blur(radius: 14 * (1 - p) + 18 * leave)
+                            .opacity(p * (1 - leave))
+                            .scaleEffect(1.12 - 0.12 * p)
+                            .offset(y: 18 * (1 - p))
+                    }
+                }
+            }
+        }
+        .tracking(-size * 0.015)
+    }
+}
+
+/// Small, widely spaced capitals above a headline.
+private struct Kicker: View {
+    let text: String
+    let time: Double
+    var body: some View {
+        Text(text.uppercased())
+            .font(serif(22, .medium))
+            .tracking(7)
+            .foregroundStyle(Color(white: 0.55))
+            .opacity(easeOut(time / 0.4))
+    }
+}
+
 // MARK: - One frame
 
 private struct DemoFrame: View {
     let t: Double
     let clips: [DemoVideo.Part: [MacScene.ClipFrame]]
     let panel: NSImage?
+    let grain: CGImage?
 
     private var current: (DemoVideo.Part, Double) { DemoVideo.part(at: t) }
     private var part: DemoVideo.Part { current.0 }
     private var local: Double { current.1 }
     private var length: Double { DemoVideo.lengths[part]! }
+    private var leaving: Double { clamp((local - (length - 0.22)) / 0.22) }
 
-    static let card = CGRect(x: 60, y: 450, width: 960, height: 630)
-    static let accent = LinearGradient(colors: [Color(red: 0.36, green: 0.62, blue: 1), Color(red: 0.66, green: 0.45, blue: 1)],
-                                       startPoint: .leading, endPoint: .trailing)
+    /// Where the 3D Mac sits.
+    static let stage = CGRect(x: 60, y: 430, width: 960, height: 630)
+    static let productParts: [DemoVideo.Part] = [.open, .lid, .plug, .ports, .desk, .heat]
+    /// Parts that open on a hard cut: a white flash and a punch-in.
+    static let cuts: [DemoVideo.Part] = [.open, .panel, .lid, .plug, .ports, .desk, .heat, .actions, .end]
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            background
-            switch part {
-            case .hook: hook
-            case .panel: panelTour
-            case .actions: actions
-            case .end: endCard
-            default: EmptyView()
+            Color.black
+            Group {
+                switch part {
+                case .hook: hook
+                case .menuBar: introducing
+                case .panel: panelTour
+                case .actions: actions
+                case .end: endCard
+                default: EmptyView()
+                }
+                if Self.productParts.contains(part) { product }
+                if Self.productParts.contains(part) || part == .actions { caption }
+                if part == .heat { notification }
+                if Self.productParts.contains(part) || part == .actions { chapter }
             }
-            if [.open, .lid, .plug, .ports, .desk, .heat].contains(part) { card }
-            if part != .hook && part != .end { caption }
-            if part == .heat { notification }
-            if [.lid, .plug, .ports, .desk, .heat, .actions].contains(part) { chapters }
+            .scaleEffect(punch, anchor: .center)
             menuBar
             cursor
-            progress
+            finish
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
         .clipped()
     }
 
-    // MARK: Backdrop
+    /// The zoom on a cut: starts 6% in and settles.
+    private var punch: CGFloat {
+        Self.cuts.contains(part) ? 1 + 0.06 * (1 - easeOut(local / 0.35)) : 1
+    }
 
-    private var background: some View {
-        ZStack {
-            Color(red: 0.035, green: 0.04, blue: 0.065)
-            RadialGradient(colors: [Color(red: 0.25, green: 0.35, blue: 0.95).opacity(0.35), .clear], center: .center, startRadius: 0, endRadius: 520)
-                .frame(width: 1100, height: 1100)
-                .offset(x: -260 + 120 * sin(t * 0.35), y: -380 + 90 * cos(t * 0.3))
-            RadialGradient(colors: [Color(red: 0.62, green: 0.3, blue: 0.95).opacity(0.28), .clear], center: .center, startRadius: 0, endRadius: 480)
-                .frame(width: 1000, height: 1000)
-                .offset(x: 300 - 100 * cos(t * 0.28), y: 420 + 110 * sin(t * 0.33))
+    /// Flash, vignette, grain and the progress line, over everything.
+    private var finish: some View {
+        ZStack(alignment: .topLeading) {
+            if Self.cuts.contains(part) {
+                Color.white.opacity(0.32 * (1 - clamp(local / 0.12)))
+            }
+            RadialGradient(colors: [.clear, .black.opacity(0.55)], center: .center, startRadius: 380, endRadius: 900)
+            if let grain {
+                Image(decorative: grain, scale: 1).resizable().interpolation(.none)
+                    .blendMode(.overlay).opacity(0.13)
+            }
+            Rectangle().fill(Color.white.opacity(0.85))
+                .frame(width: DemoVideo.size.width * t / DemoVideo.total, height: 3)
+                .offset(y: DemoVideo.size.height - 3)
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
-    }
-
-    private var progress: some View {
-        ZStack(alignment: .leading) {
-            Rectangle().fill(Color.white.opacity(0.08))
-            Rectangle().fill(Self.accent).frame(width: DemoVideo.size.width * t / DemoVideo.total)
-        }
-        .frame(width: DemoVideo.size.width, height: 6)
-        .offset(y: DemoVideo.size.height - 6)
-    }
-
-    // MARK: Captions
-
-    private var captionText: (String, String) {
-        switch part {
-        case .menuBar: ("Meet DeskBar.", "It lives in your menu bar.")
-        case .open: ("One click. One answer.", "All good, or the one thing that isn't.")
-        case .panel: ("Everything at a glance.", "Detail only when you ask.")
-        case .lid: ("It mirrors your real Mac.", "Move the lid, and so does it.")
-        case .plug: ("Plug in. It knows.", "MagSafe, charge level, charger speed.")
-        case .ports: ("Every port, labelled.", "What's plugged in, and where.")
-        case .desk: ("Your whole desk.", "Monitors appear as you connect them.")
-        case .heat: ("Warns you early.", "Heat, memory, disk and battery.")
-        case .actions: ("Quick actions, one tap.", "Focus, keep awake, lock and more.")
-        default: ("", "")
-        }
-    }
-
-    private var caption: some View {
-        let (title, subtitle) = captionText
-        let fadeOut = 1 - clamp((local - (length - 0.25)) / 0.25)
-        let inTitle = easeOut((local - 0.05) / 0.5), inSubtitle = easeOut((local - 0.25) / 0.5)
-        return VStack(alignment: .leading, spacing: 14) {
-            Text(title)
-                .font(.system(size: 74, weight: .bold))
-                .tracking(-1.5)
-                .foregroundStyle(.white)
-                .opacity(inTitle)
-                .offset(y: 28 * (1 - inTitle))
-            Text(subtitle)
-                .font(.system(size: 38, weight: .regular))
-                .foregroundStyle(Color(white: 0.66))
-                .opacity(inSubtitle)
-                .offset(y: 22 * (1 - inSubtitle))
-        }
-        .opacity(fadeOut)
-        .padding(.leading, 60)
-        .padding(.top, 140)
+        .allowsHitTesting(false)
     }
 
     // MARK: Hook
 
     private var hook: some View {
-        let words = ["Is", "your", "Mac", "OK?"]
-        let leave = ease((local - 2.45) / 0.5)
-        let places: [(String, String, CGPoint)] = [("Activity Monitor", "waveform.path.ecg", CGPoint(x: 110, y: 830)),
-                                                   ("System Settings", "gearshape", CGPoint(x: 560, y: 900)),
-                                                   ("Control Centre", "switch.2", CGPoint(x: 170, y: 1010)),
-                                                   ("Battery menu", "battery.75percent", CGPoint(x: 600, y: 1080))]
-        return ZStack(alignment: .topLeading) {
-            HStack(spacing: 24) {
-                ForEach(Array(words.enumerated()), id: \.offset) { i, word in
-                    let p = springy((local - 0.12 - Double(i) * 0.16) / 0.45)
-                    Text(word)
-                        .font(.system(size: 112, weight: .heavy))
-                        .tracking(-3)
-                        .foregroundStyle(i == 3 ? AnyShapeStyle(Self.accent) : AnyShapeStyle(Color.white))
-                        .scaleEffect(0.6 + 0.4 * p)
-                        .opacity(clamp(p * 1.4))
+        let places = ["Activity Monitor.", "System Settings.", "Control Centre.", "The battery menu."]
+        let montage = local - 1.45
+        return ZStack {
+            if montage < 0 {
+                Headline(text: "Is your Mac|*okay?*", size: 124, time: local - 0.1, leave: clamp((local - 1.25) / 0.2))
+            } else {
+                let i = min(Int(montage / 0.42), places.count - 1)
+                let into = montage - Double(i) * 0.42
+                VStack(spacing: 26) {
+                    Kicker(text: "Today you'd check", time: montage)
+                    Text(places[i])
+                        .font(serif(92))
+                        .italic()
+                        .foregroundStyle(.white)
+                        .scaleEffect(1.08 - 0.08 * easeOut(into / 0.3))
+                        .opacity(montage > 1.75 ? 1 - clamp((montage - 1.75) / 0.15) : 1)
                 }
-            }
-            .frame(width: DemoVideo.size.width)
-            .offset(y: 470)
-            Text("Today you'd check four places.")
-                .font(.system(size: 40))
-                .foregroundStyle(Color(white: 0.66))
-                .frame(width: DemoVideo.size.width)
-                .offset(y: 640)
-                .opacity(easeOut((local - 0.9) / 0.4))
-            ForEach(Array(places.enumerated()), id: \.offset) { i, place in
-                let p = springy((local - 1.2 - Double(i) * 0.14) / 0.4)
-                HStack(spacing: 12) {
-                    Image(systemName: place.1).font(.system(size: 30, weight: .medium))
-                    Text(place.0).font(.system(size: 32, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 26).padding(.vertical, 16)
-                .background(Capsule().fill(Color.white.opacity(0.1)))
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.14)))
-                .rotationEffect(.degrees(Double(i % 2 == 0 ? -3 : 3)))
-                .scaleEffect(0.5 + 0.5 * p)
-                .opacity(clamp(p * 1.5))
-                .offset(x: place.2.x, y: place.2.y)
+                Color.white.opacity(0.18 * (1 - clamp(into / 0.08)))   // a flash on every word
             }
         }
-        .opacity(1 - leave)
-        .scaleEffect(1 - 0.08 * leave)
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
     }
 
     // MARK: Menu bar and cursor
 
+    private var introducing: some View {
+        VStack(spacing: 22) {
+            Kicker(text: "Introducing", time: local - 0.1)
+            Headline(text: "DeskBar.", size: 150, time: local - 0.25, leave: leaving)
+            Text("It lives in your menu bar.")
+                .font(serif(38)).italic()
+                .foregroundStyle(Color(white: 0.6))
+                .opacity(easeOut((local - 0.7) / 0.4) * (1 - leaving))
+        }
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
+    }
+
     private var menuBarShown: Double {
         switch part {
         case .hook: 0
-        case .menuBar: easeOut(local / 0.4)
+        case .menuBar: easeOut(local / 0.35)
         case .end: 1 - ease(local / 0.4)
         default: 1
         }
@@ -338,7 +389,7 @@ private struct DemoFrame: View {
     private var panelOpen: Bool {
         switch part {
         case .hook, .end: false
-        case .menuBar: local > 1.15
+        case .menuBar: local > 1.35
         default: true
         }
     }
@@ -360,23 +411,24 @@ private struct DemoFrame: View {
             Image(systemName: "wifi").font(.system(size: 20)).frame(width: 56)
             Image(systemName: "battery.75percent").font(.system(size: 22)).frame(width: 64)
             Text(Date.now.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute()))   // matches the 3D Mac's screen
-                .font(.system(size: 21)).frame(width: 250, alignment: .trailing)
+                .font(.system(size: 21))
+                .frame(width: 250, alignment: .trailing)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 24)
         .frame(width: DemoVideo.size.width, height: 44)
-        .background(Color(white: 0.12).opacity(0.92))
+        .background(Color(white: 0.1).opacity(0.95))
         .offset(y: -44 * (1 - menuBarShown))
         .opacity(menuBarShown)
     }
 
     private var cursorPoint: CGPoint? {
-        let start = CGPoint(x: 540, y: 820), end = Self.itemCentre
+        let start = CGPoint(x: 540, y: 1000), end = Self.itemCentre
         switch part {
         case .menuBar:
-            let p = ease((local - 0.25) / 0.8)
+            let p = ease((local - 0.45) / 0.8)
             return CGPoint(x: start.x + (end.x - start.x) * p + 10, y: start.y + (end.y - start.y) * p + 6)
-        case .open where local < 0.8:
+        case .open where local < 0.6:
             return CGPoint(x: end.x + 10, y: end.y + 6)
         default: return nil
         }
@@ -384,7 +436,7 @@ private struct DemoFrame: View {
 
     @ViewBuilder private var cursor: some View {
         if let point = cursorPoint {
-            let click = part == .menuBar ? clamp((local - 1.1) / 0.45) : 1
+            let click = part == .menuBar ? clamp((local - 1.3) / 0.45) : 1
             ZStack(alignment: .topLeading) {
                 if click > 0 && click < 1 {
                     Circle()
@@ -399,171 +451,144 @@ private struct DemoFrame: View {
                     .scaleEffect(click > 0 && click < 0.25 ? 0.85 : 1, anchor: .topLeading)
                     .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
                     .offset(x: point.x, y: point.y)
-                    .opacity(part == .open ? 1 - clamp((local - 0.5) / 0.3) : 1)
+                    .opacity(part == .open ? 1 - clamp((local - 0.35) / 0.25) : 1)
             }
         }
     }
 
-    // MARK: The card
+    // MARK: Captions and chapters
+
+    private var captionText: (kicker: String, headline: String, line: String) {
+        switch part {
+        case .open: ("One answer", "One click. *One answer.*", "All good, or the one thing that isn't.")
+        case .lid: ("Live", "It mirrors *your* Mac.", "Move the lid, and so does it.")
+        case .plug: ("Power", "Plug in. *It knows.*", "MagSafe, charge level, charger speed.")
+        case .ports: ("Ports", "Every port, *labelled.*", "What's plugged in, and where.")
+        case .desk: ("Desk", "Your whole *desk.*", "Monitors appear as you connect them.")
+        case .heat: ("Alerts", "Warns you *early.*", "Heat, memory, disk and battery.")
+        case .actions: ("Actions", "One tap, *done.*", "Focus, keep awake, lock and more.")
+        default: ("", "", "")
+        }
+    }
+
+    private var caption: some View {
+        let text = captionText
+        return VStack(spacing: 14) {
+            Headline(text: text.headline, size: 84, time: local - 0.08, leave: leaving)
+            Text(text.line)
+                .font(serif(34)).italic()
+                .foregroundStyle(Color(white: 0.58))
+                .opacity(easeOut((local - 0.45) / 0.4) * (1 - leaving))
+        }
+        .frame(width: DemoVideo.size.width)
+        .offset(y: 150)
+    }
+
+    /// "03 / 07  PORTS", like a chapter card in a film.
+    private var chapter: some View {
+        let steps: [DemoVideo.Part] = [.open, .lid, .plug, .ports, .desk, .heat, .actions]
+        let number = (steps.firstIndex(of: part) ?? 0) + 1
+        return HStack(spacing: 22) {
+            Text(String(format: "%02d", number)).foregroundStyle(.white)
+            Rectangle().fill(Color(white: 0.35)).frame(width: 60, height: 1.5)
+            Text(String(format: "%02d", steps.count)).foregroundStyle(Color(white: 0.45))
+            Text(captionText.kicker.uppercased()).tracking(7).foregroundStyle(Color(white: 0.55)).padding(.leading, 18)
+        }
+        .font(serif(26, .medium))
+        .monospacedDigit()
+        .frame(width: DemoVideo.size.width)
+        .offset(y: 1210)
+        .opacity(easeOut(local / 0.3) * (1 - leaving))
+    }
+
+    // MARK: The 3D Mac
 
     private var clip: [MacScene.ClipFrame] { clips[part] ?? [] }
 
-    private func frame(in clip: [MacScene.ClipFrame], at time: Double) -> MacScene.ClipFrame? {
+    private func frame(at time: Double) -> MacScene.ClipFrame? {
         clip.last { $0.time <= time } ?? clip.first
     }
 
-    private var previousClipFrame: MacScene.ClipFrame? {
-        let order = DemoVideo.Part.allCases
-        guard let i = order.firstIndex(of: part), i > 0 else { return nil }
-        return clips[order[i - 1]]?.last
-    }
-
-    private var card: some View {
-        let rect = Self.card
-        let entrance = part == .open ? springy(local / 0.55) : 1
-        let now = frame(in: clip, at: local)
-        let blend = clamp(local / 0.2)
+    private var product: some View {
+        let stage = Self.stage
+        let now = frame(at: local)
+        let push = 1 + 0.045 * local / length   // slow push-in through the shot
         return ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 42, style: .continuous).fill(Color(white: 0.13))
-            if let previous = previousClipFrame, part != .open, blend < 1 {
-                Image(nsImage: previous.image).resizable().opacity(1 - blend)
+            if let now {
+                Image(nsImage: now.image).resizable()
+                    .frame(width: stage.width, height: stage.height)
+                if part == .ports { portLabels(now) }
             }
-            if let now { Image(nsImage: now.image).resizable().opacity(part == .open ? 1 : blend) }
-            if part == .ports, let now { portLabels(now) }
-            cardTitle
-            if let now, part != .ports { pills(now.pills) }
         }
-        .frame(width: rect.width, height: rect.height)
-        .clipShape(RoundedRectangle(cornerRadius: 42, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 42, style: .continuous).strokeBorder(Color.white.opacity(0.1), lineWidth: 2))
-        .shadow(color: .black.opacity(0.45), radius: 40, y: 20)
-        .scaleEffect(0.94 + 0.06 * entrance)
-        .opacity(clamp(entrance * 1.6))
-        .offset(x: rect.minX, y: rect.minY - 50 * (1 - entrance))
+        .frame(width: stage.width, height: stage.height, alignment: .topLeading)
+        .scaleEffect(push)
+        .offset(x: stage.minX, y: stage.minY)
+        .overlay(alignment: .topLeading) { status(now) }
     }
 
-    @ViewBuilder private var cardTitle: some View {
-        let hot = part == .heat
-        let shown = part == .open ? easeOut((local - 2.3) / 0.5) : 1
-        if part != .ports && part != .desk {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("MacBook Pro").font(.system(size: 39, weight: .semibold)).foregroundStyle(.white)
-                    Text(MacInfo.subtitle).font(.system(size: 30)).foregroundStyle(Color(white: 0.6))
-                }
-                Spacer()
-                if !hot {   // the alert banner sits here; the pill below says it instead
+    /// What the card would say, set as a quiet line under the Mac.
+    @ViewBuilder private func status(_ now: MacScene.ClipFrame?) -> some View {
+        let pills = now?.pills ?? []
+        let shownPills = part == .open ? [HeroPill(text: "All good", color: .green)] : pills
+        if part != .ports && !shownPills.isEmpty {
+            HStack(spacing: 34) {
+                ForEach(shownPills) { pill in
                     HStack(spacing: 12) {
-                        Circle().fill(Color.green).frame(width: 16, height: 16)
-                        Text("All good").font(.system(size: 32, weight: .medium)).foregroundStyle(Color(white: 0.75))
+                        Circle().fill(pill.color).frame(width: 12, height: 12)
+                        Text(pill.text.uppercased()).font(serif(24, .medium)).tracking(5).foregroundStyle(Color(white: 0.8))
                     }
                 }
             }
-            .padding(36)
-            .opacity(shown)
-        } else if part == .ports {
-            let side = local < 2.4 ? "Left side" : "Right side"
-            Text(side).font(.system(size: 33, weight: .medium)).foregroundStyle(Color(white: 0.7)).padding(32)
+            .frame(width: DemoVideo.size.width)
+            .offset(y: Self.stage.maxY + 22)
+            .opacity((part == .open ? easeOut((local - 2.2) / 0.5) : easeOut(local / 0.3)) * (1 - leaving))
         }
-    }
-
-    private func pills(_ pills: [HeroPill]) -> some View {
-        HStack(spacing: 16) {
-            ForEach(pills) { pill in
-                HStack(spacing: 12) {
-                    Circle().fill(pill.color).frame(width: 16, height: 16)
-                    Text(pill.text).font(.system(size: 30, weight: .medium)).foregroundStyle(.white)
-                }
-                .padding(.horizontal, 24).padding(.vertical, 12)
-                .background(Capsule().fill(Color.white.opacity(0.12)))
-            }
-        }
-        .padding(30)
-        .frame(width: Self.card.width, height: Self.card.height, alignment: .bottomLeading)
     }
 
     /// Rings on the ports and labels below, arriving one after another once the camera settles.
     private func portLabels(_ now: MacScene.ClipFrame) -> some View {
         let side: Ports.Side = local < 2.4 ? .left : .right
-        let ports = DemoVideo.ports(["Port-MagSafe 3@1": "Charging · 70 W", "Port-USB-C@2": "Display · 4K",
-                                     "Port-USB-C@1": "Display · 4K", "Port-USB-C@4": "SSD · 1 TB", "Port-SD Card@1": "SD card · 128 GB"])
-            .filter { $0.side == side && now.anchors[$0.id] != nil }
+        let ports = DemoVideo.ports(DemoVideo.shownPorts).filter { $0.side == side && now.anchors[$0.id] != nil }
         // How long the anchors have been showing.
         let since = clip.reversed().drop { $0.time > local }.prefix { !$0.anchors.isEmpty }.last.map { local - $0.time } ?? 0
         return ZStack(alignment: .topLeading) {
-            LinearGradient(colors: [.clear, Color(white: 0.08).opacity(0.9)], startPoint: UnitPoint(x: 0.5, y: 0.4), endPoint: UnitPoint(x: 0.5, y: 0.62))
+            LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: UnitPoint(x: 0.5, y: 0.42), endPoint: UnitPoint(x: 0.5, y: 0.64))
             ForEach(Array(ports.sorted { $0.z < $1.z }.enumerated()), id: \.element.id) { i, port in
-                let anchor = now.anchors[port.id]!
-                let x = anchor.x * 3, y = anchor.y * 3
-                let p = easeOut((since - Double(i) * 0.12) / 0.35)
-                let row = CGFloat(i % 2)
-                let labelY = 470 + row * 72
-                ZStack(alignment: .topLeading) {
-                    Circle().strokeBorder(port.connected ? Color(red: 0.4, green: 0.85, blue: 0.5) : Color.white.opacity(0.6), lineWidth: 4)
-                        .frame(width: 28, height: 28).offset(x: x - 14, y: y - 14)
-                    Rectangle().fill(Color.white.opacity(0.35)).frame(width: 2, height: max(0, (labelY - y - 16) * p))
-                        .offset(x: x - 1, y: y + 14)
-                    VStack(alignment: .center, spacing: 2) {
-                        Text(port.name).font(.system(size: 26, weight: .semibold)).foregroundStyle(.white)
-                        Text(port.detail).font(.system(size: 22)).foregroundStyle(port.connected ? Color(red: 0.55, green: 0.9, blue: 0.62) : Color(white: 0.55))
-                    }
-                    .fixedSize()
-                    .frame(width: 260)
-                    .offset(x: x - 130, y: labelY + 14 * (1 - p))
-                    .opacity(p)
-                }
+                portLabel(port, anchor: now.anchors[port.id]!, index: i, since: since)
             }
         }
     }
 
-    // MARK: Chapters
-
-    /// What the video has shown and what's coming, under the card.
-    private var chapters: some View {
-        let steps: [(DemoVideo.Part, String, String)] = [(.lid, "Lid", "macbook"), (.plug, "Power", "bolt.fill"),
-                                                          (.ports, "Ports", "cable.connector"), (.desk, "Desk", "display.2"),
-                                                          (.heat, "Alerts", "bell.badge.fill"), (.actions, "Actions", "square.grid.2x2.fill")]
-        let currentIndex = steps.firstIndex { $0.0 == part } ?? 0
-        let appear = part == .lid ? easeOut(local / 0.5) : 1
-        let fade = part == .actions ? 1 - clamp((local - (length - 0.25)) / 0.25) : 1
-        return HStack(spacing: 0) {
-            ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
-                chapterStep(title: step.1, symbol: step.2, state: i == currentIndex ? 0 : i < currentIndex ? -1 : 1)
+    private func portLabel(_ port: Ports.Port, anchor: CGPoint, index: Int, since: Double) -> some View {
+        let x: CGFloat = anchor.x * 3, y: CGFloat = anchor.y * 3
+        let p = easeOut((since - Double(index) * 0.12) / 0.35)
+        let labelY: CGFloat = 470 + CGFloat(index % 2) * 74
+        let line: CGFloat = max(0, (labelY - y - 16) * p)
+        return ZStack(alignment: .topLeading) {
+            Circle().strokeBorder(port.connected ? Color.white : Color.white.opacity(0.45), lineWidth: 3)
+                .frame(width: 26, height: 26).offset(x: x - 13, y: y - 13)
+            Rectangle().fill(Color.white.opacity(0.4)).frame(width: 1.5, height: line)
+                .offset(x: x - 0.75, y: y + 13)
+            VStack(spacing: 0) {
+                Text(port.name).font(serif(30, .medium)).foregroundStyle(.white)
+                Text(port.detail).font(serif(24)).italic().foregroundStyle(Color(white: port.connected ? 0.75 : 0.45))
             }
+            .fixedSize()
+            .frame(width: 260)
+            .offset(x: x - 130, y: labelY + 14 * (1 - p))
+            .opacity(p)
         }
-        .frame(width: DemoVideo.size.width)
-        .offset(y: 1150 + 30 * (1 - appear))
-        .opacity(appear * fade)
-    }
-
-    /// One step: `state` is -1 done, 0 now, 1 still to come.
-    private func chapterStep(title: String, symbol: String, state: Int) -> some View {
-        let active = state == 0
-        let iconOpacity: Double = active ? 1 : state < 0 ? 0.7 : 0.3
-        let fill: AnyShapeStyle = active ? AnyShapeStyle(Self.accent) : AnyShapeStyle(Color.white.opacity(state < 0 ? 0.16 : 0.06))
-        let scale: CGFloat = active ? 0.9 + 0.2 * springy(local / 0.4) : 0.9
-        return VStack(spacing: 10) {
-            Circle()
-                .fill(fill)
-                .frame(width: 76, height: 76)
-                .overlay(Image(systemName: symbol).font(.system(size: 30, weight: .semibold)).foregroundStyle(Color.white.opacity(iconOpacity)))
-                .scaleEffect(scale)
-            Text(title)
-                .font(.system(size: 24, weight: active ? .semibold : .regular))
-                .foregroundStyle(Color.white.opacity(active ? 1 : state < 0 ? 0.6 : 0.3))
-        }
-        .frame(width: 160)
     }
 
     // MARK: Heat alert
 
     private var notification: some View {
-        let p = springy((local - 0.7) / 0.5)
-        let x: CGFloat = Self.card.maxX - 544 + 60 * (1 - p)
-        let y: CGFloat = Self.card.minY + 24
+        let p = springy((local - 0.8) / 0.5)
+        let x: CGFloat = Self.stage.maxX - 520 + 60 * (1 - p)
+        let y: CGFloat = Self.stage.minY - 10
         return HStack(alignment: .top, spacing: 18) {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(LinearGradient(colors: [.orange, .red], startPoint: .top, endPoint: .bottom))
+                .fill(Color.orange)
                 .frame(width: 64, height: 64)
                 .overlay(Image(systemName: "thermometer.high").font(.system(size: 32, weight: .semibold)).foregroundStyle(.white))
             VStack(alignment: .leading, spacing: 4) {
@@ -579,54 +604,57 @@ private struct DemoFrame: View {
         }
         .padding(22)
         .frame(width: 520)
-        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color(white: 0.2)))
-        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(Color.white.opacity(0.12)))
-        .shadow(color: .black.opacity(0.5), radius: 24, y: 10)
+        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color(white: 0.17)))
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
+        .shadow(color: .black.opacity(0.6), radius: 24, y: 10)
         .offset(x: x, y: y)
-        .opacity(clamp(p * 1.5) * (1 - clamp((local - (length - 0.25)) / 0.25)))
+        .opacity(clamp(p * 1.5) * (1 - leaving))
     }
 
     // MARK: Panel tour
 
     private var panelTour: some View {
-        let height: CGFloat = 960, width: CGFloat = 680 * height / 1746
+        let height: CGFloat = 980, width: CGFloat = 680 * height / 1746
         let rise = springy(local / 0.6)
-        let fadeOut = 1 - clamp((local - (length - 0.3)) / 0.3)
         // Section centres in the 680 × 1746 screenshot.
         let callouts: [(CGFloat, String, String)] = [
-            (230, "Live 3D Mac", "and one health verdict"),
-            (540, "CPU, heat and fans", "per core, with history"),
-            (720, "Memory · Disk · Battery", "plus Wi-Fi and latency"),
-            (1085, "Network · Sound · Display", "speed test, devices, alerts"),
+            (230, "A living 3D Mac", "and one health verdict"),
+            (540, "CPU, heat & fans", "per core, with history"),
+            (720, "Memory, disk, battery", "plus Wi-Fi and latency"),
+            (1085, "Network, sound, display", "speed test, devices, alerts"),
             (1445, "Quick actions", "one tap, no digging"),
         ]
-        let left: CGFloat = 90, top: CGFloat = 330
+        let left: CGFloat = 80, top: CGFloat = 300
         return ZStack(alignment: .topLeading) {
+            VStack(alignment: .leading, spacing: 10) {
+                Kicker(text: "The whole panel", time: local)
+                Headline(text: "Everything, *at a glance.*", size: 70, time: local - 0.1, leave: leaving, alignment: .leading)
+            }
+            .offset(x: 80, y: 120)
             if let panel {
                 Image(nsImage: panel).resizable()
                     .frame(width: width, height: height)
                     .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-                    .shadow(color: .black.opacity(0.5), radius: 30, y: 16)
+                    .shadow(color: .white.opacity(0.06), radius: 30)
                     .offset(x: left, y: top + 160 * (1 - rise))
-                    .opacity(clamp(rise * 1.4))
+                    .opacity(clamp(rise * 1.4) * (1 - leaving))
             }
             ForEach(Array(callouts.enumerated()), id: \.offset) { i, callout in
                 let y = top + callout.0 * height / 1746
-                let p = easeOut((local - 0.7 - Double(i) * 0.4) / 0.4)
+                let p = easeOut((local - 0.7 - Double(i) * 0.45) / 0.4)
                 ZStack(alignment: .topLeading) {
-                    Circle().fill(Self.accent).frame(width: 14, height: 14).offset(x: left + width + 14, y: y - 7)
-                    Rectangle().fill(Color.white.opacity(0.3)).frame(width: 70 * p, height: 2).offset(x: left + width + 30, y: y - 1)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(callout.1).font(.system(size: 36, weight: .semibold)).foregroundStyle(.white)
-                        Text(callout.2).font(.system(size: 26)).foregroundStyle(Color(white: 0.6))
+                    Rectangle().fill(Color.white.opacity(0.5)).frame(width: 80 * p, height: 1.5).offset(x: left + width + 24, y: y)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(callout.1).font(serif(40)).foregroundStyle(.white)
+                        Text(callout.2).font(serif(28)).italic().foregroundStyle(Color(white: 0.55))
                     }
                     .fixedSize()
-                    .offset(x: left + width + 116 + 20 * (1 - p), y: y - 34)
+                    .offset(x: left + width + 124 + 20 * (1 - p), y: y - 30)
                 }
-                .opacity(p)
+                .blur(radius: 10 * (1 - p))
+                .opacity(p * (1 - leaving))
             }
         }
-        .opacity(fadeOut)
     }
 
     // MARK: Quick actions
@@ -637,86 +665,66 @@ private struct DemoFrame: View {
                                          ("Clean up", "arrow.down.circle"), ("Lock", "lock.fill")]
         let focusOn = local > 1.7
         let tap = clamp((local - 1.55) / 0.35)
-        let fadeOut = 1 - clamp((local - (length - 0.25)) / 0.25)
         return ZStack(alignment: .topLeading) {
             ForEach(Array(items.enumerated()), id: \.offset) { i, item in
-                let p = springy((local - 0.2 - Double(i) * 0.07) / 0.45)
+                let p = springy((local - 0.25 - Double(i) * 0.07) / 0.45)
                 let on = i == 0 && focusOn
                 VStack(spacing: 18) {
                     Circle()
-                        .fill(on ? AnyShapeStyle(Self.accent) : AnyShapeStyle(Color.white.opacity(0.12)))
+                        .fill(on ? Color.white : Color.white.opacity(0.08))
+                        .overlay(Circle().strokeBorder(Color.white.opacity(on ? 0 : 0.14), lineWidth: 1.5))
                         .frame(width: 150, height: 150)
-                        .overlay(Image(systemName: item.1).font(.system(size: 54, weight: .medium)).foregroundStyle(.white))
+                        .overlay(Image(systemName: item.1).font(.system(size: 52, weight: .regular)).foregroundStyle(on ? Color.black : Color.white))
                         .scaleEffect(i == 0 && tap > 0 && tap < 1 ? 1 - 0.12 * sin(tap * .pi) : 1)
-                    Text(item.0).font(.system(size: 30, weight: .medium)).foregroundStyle(Color(white: on ? 1 : 0.75))
+                    Text(item.0).font(serif(32)).foregroundStyle(Color(white: on ? 1 : 0.7))
                 }
                 .frame(width: 230)
                 .scaleEffect(0.4 + 0.6 * p)
-                .opacity(clamp(p * 1.5))
-                .offset(x: 80 + CGFloat(i % 4) * 230, y: 480 + CGFloat(i / 4) * 280)
+                .opacity(clamp(p * 1.5) * (1 - leaving))
+                .offset(x: 80 + CGFloat(i % 4) * 230, y: 470 + CGFloat(i / 4) * 290)
             }
-            Text("Focus on")
-                .font(.system(size: 32, weight: .medium))
+            Text("Focus on.")
+                .font(serif(36)).italic()
                 .foregroundStyle(Color(white: 0.7))
                 .frame(width: DemoVideo.size.width)
-                .offset(y: 1060)
-                .opacity(easeOut((local - 1.8) / 0.3))
+                .offset(y: 1090)
+                .opacity(easeOut((local - 1.8) / 0.3) * (1 - leaving))
         }
-        .opacity(fadeOut)
     }
 
     // MARK: End card
 
     private var endCard: some View {
-        let icon = springy((local - 0.15) / 0.55)
-        let name = easeOut((local - 0.45) / 0.45)
-        let chips = ["Free", "Open source", "Private by design"]
-        let link = easeOut((local - 1.8) / 0.4)
-        return ZStack(alignment: .top) {
-            RoundedRectangle(cornerRadius: 56, style: .continuous)
-                .fill(Self.accent)
-                .frame(width: 240, height: 240)
-                .overlay(Image(systemName: "macbook").font(.system(size: 130, weight: .light)).foregroundStyle(.white))
-                .shadow(color: Color(red: 0.4, green: 0.4, blue: 1).opacity(0.5), radius: 40, y: 12)
-                .scaleEffect(0.3 + 0.7 * icon)
-                .opacity(clamp(icon * 1.5))
-                .offset(y: 300)
-            Text("DeskBar")
-                .font(.system(size: 120, weight: .heavy)).tracking(-3)
-                .foregroundStyle(.white)
-                .opacity(name).offset(y: 590 + 30 * (1 - name))
+        VStack(spacing: 0) {
+            Headline(text: "DeskBar.", size: 170, time: local - 0.15)
             Text("Your Mac, at a glance.")
-                .font(.system(size: 46))
-                .foregroundStyle(Color(white: 0.7))
-                .opacity(easeOut((local - 0.7) / 0.45)).offset(y: 750)
-            HStack(spacing: 16) {
-                ForEach(Array(chips.enumerated()), id: \.offset) { i, chip in
-                    let p = springy((local - 1.1 - Double(i) * 0.12) / 0.4)
-                    Text(chip)
-                        .font(.system(size: 32, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 26).padding(.vertical, 14)
-                        .background(Capsule().fill(Color.white.opacity(0.1)))
-                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.16)))
-                        .scaleEffect(0.6 + 0.4 * p)
-                        .opacity(clamp(p * 1.5))
-                }
+                .font(serif(50)).italic()
+                .foregroundStyle(Color(white: 0.65))
+                .blur(radius: 10 * (1 - easeOut((local - 0.6) / 0.5)))
+                .opacity(easeOut((local - 0.6) / 0.5))
+                .padding(.top, 8)
+            Text("FREE  ·  OPEN SOURCE  ·  PRIVATE BY DESIGN")
+                .font(serif(24, .medium)).tracking(6)
+                .foregroundStyle(Color(white: 0.55))
+                .opacity(easeOut((local - 1.2) / 0.5))
+                .padding(.top, 54)
+            HStack(spacing: 14) {
+                Text("Link in the comments").italic()
+                Image(systemName: "arrow.down").font(.system(size: 30, weight: .light))
+                    .offset(y: 7 * sin(max(0, local - 1.9) * 6))
             }
-            .offset(y: 850)
-            HStack(spacing: 12) {
-                Text("Link in the comments")
-                Image(systemName: "arrow.down")
-                    .offset(y: 8 * sin(max(0, local - 1.8) * 6))
-            }
-            .font(.system(size: 40, weight: .semibold))
-            .foregroundStyle(Self.accent)
-            .opacity(link).offset(y: 1030)
-            Text("This video was rendered by DeskBar itself.")
-                .font(.system(size: 24))
-                .foregroundStyle(Color(white: 0.45))
-                .opacity(easeOut((local - 2.4) / 0.5)).offset(y: 1220)
+            .font(serif(46))
+            .foregroundStyle(.white)
+            .opacity(easeOut((local - 1.9) / 0.4))
+            .padding(.top, 120)
+            Text("RENDERED BY DESKBAR ITSELF")
+                .font(serif(19, .medium)).tracking(6)
+                .foregroundStyle(Color(white: 0.38))
+                .opacity(easeOut((local - 2.6) / 0.5))
+                .padding(.top, 150)
         }
-        .frame(width: DemoVideo.size.width)
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
+        .offset(y: 60)
     }
 }
 
