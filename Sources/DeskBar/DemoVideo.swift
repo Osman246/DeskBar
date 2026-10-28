@@ -7,6 +7,8 @@ import SwiftUI
 /// (captions, menu bar, cursor) is drawn here, cut like a short cinematic edit: black, serif
 /// headlines. The first frame already reads, since feeds autoplay muted.
 ///
+/// `--credit "Built by …"` adds a credit line to the end card.
+///
 /// The headlines use EB Garamond (SIL Open Font License) when its .ttf files are in the `--fonts`
 /// directory, and macOS's Hoefler Text otherwise.
 @MainActor
@@ -19,6 +21,7 @@ enum DemoVideo {
                                           .ports: 5.2, .desk: 3.6, .heat: 4.8, .actions: 3.0, .end: 4.4]
     static var total: Double { lengths.values.reduce(0, +) }
     nonisolated(unsafe) static var serif = "Hoefler Text"   // set once before rendering
+    nonisolated(unsafe) static var credit: String?
 
     /// Where `t` falls: the part and the time into it.
     static func part(at t: Double) -> (Part, Double) {
@@ -39,6 +42,9 @@ enum DemoVideo {
                 CTFontManagerRegisterFontsForURL(file as CFURL, .process, nil)
             }
             if NSFontManager.shared.availableFontFamilies.contains("EB Garamond") { serif = "EB Garamond" }
+        }
+        if let i = CommandLine.arguments.firstIndex(of: "--credit"), i + 1 < CommandLine.arguments.count {
+            credit = CommandLine.arguments[i + 1]
         }
         print("Headlines in \(serif)")
         let mac = model.mac
@@ -135,7 +141,8 @@ enum DemoVideo {
         }
 
         reset(base)
-        clips[.open] = await mac.recordClip(seconds: 3.6, intro: true)
+        // The opening's turn is quick enough for the menu bar but reads as a jump full-screen.
+        clips[.open] = await mac.recordClip(seconds: 3.6, intro: true, speed: 0.65)
 
         reset(base)
         clips[.lid] = await mac.recordClip(seconds: 3.8) { t in
@@ -268,7 +275,8 @@ private struct DemoFrame: View {
     static let stage = CGRect(x: 60, y: 430, width: 960, height: 630)
     static let productParts: [DemoVideo.Part] = [.open, .lid, .plug, .ports, .desk, .heat]
     /// Parts that open on a hard cut: a white flash and a punch-in.
-    static let cuts: [DemoVideo.Part] = [.open, .lid, .plug, .ports, .desk, .heat, .actions, .end]
+    /// The lid scene carries straight on from the opening (same shot), so it doesn't cut.
+    static let cuts: [DemoVideo.Part] = [.open, .plug, .ports, .desk, .heat, .actions, .end]
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -693,11 +701,18 @@ private struct DemoFrame: View {
             .foregroundStyle(Color(white: 0.7))
             .opacity(easeOut((local - 2.3) / 0.4))
             .padding(.top, 40)
+            if let credit = DemoVideo.credit {
+                Text(credit)
+                    .font(serif(36)).italic()
+                    .foregroundStyle(.white)
+                    .opacity(easeOut((local - 2.7) / 0.5))
+                    .padding(.top, 90)
+            }
             Text("RENDERED BY DESKBAR ITSELF")
                 .font(.system(size: 16, weight: .semibold)).tracking(5)
                 .foregroundStyle(Color(white: 0.38))
-                .opacity(easeOut((local - 2.8) / 0.5))
-                .padding(.top, 110)
+                .opacity(easeOut((local - 3.0) / 0.5))
+                .padding(.top, DemoVideo.credit == nil ? 110 : 18)
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
         .offset(y: 40)

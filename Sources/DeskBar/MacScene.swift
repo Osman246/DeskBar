@@ -90,6 +90,9 @@ final class MacScene: ObservableObject {
     // Animation state.
     private var timer: Timer?
     private var last = Date()
+    /// The demo video steps this clock one frame at a time, so a slow render can't skip animation.
+    private var virtualNow: Date?
+    private var clockNow: Date { virtualNow ?? Date() }
     private var introStart = Date.distantPast
     private var current: Pose
     private var yaw = 0.0                 // from dragging, degrees
@@ -415,7 +418,7 @@ final class MacScene: ObservableObject {
         yaw = 0
         move = nil
         if mode.isPorts { mode = .rest; portAnchors = [:] }
-        introStart = Date()
+        introStart = clockNow
         if reduceMotion {
             intro = .none
             finishIntro()
@@ -555,7 +558,7 @@ final class MacScene: ObservableObject {
             via = overview
         }
         apply(current)
-        move = Move(from: current, to: target, via: via, start: Date(),
+        move = Move(from: current, to: target, via: via, start: clockNow,
                     duration: sideSwitch ? 1.25 : 0.9, pullBack: 0.25, rise: 4)
     }
 
@@ -742,7 +745,7 @@ final class MacScene: ObservableObject {
     // MARK: Animation
 
     private func tick() {
-        let now = Date()
+        let now = clockNow
         let dt = min(now.timeIntervalSince(last), 0.1)
         last = now
         clock += dt
@@ -1130,10 +1133,15 @@ final class MacScene: ObservableObject {
         var anchors: [String: CGPoint]
     }
 
-    /// Records `seconds` of live animation for the demo video, calling `change` with the elapsed
-    /// time before each frame. With `intro`, the full opening plays first (snapshot mode only).
-    func recordClip(seconds: Double, scale: CGFloat = 4, intro: Bool = false,
+    /// Records `seconds` of animation for the demo video at exactly 30 fps on a virtual clock,
+    /// calling `change` with the elapsed time before each frame. With `intro`, the full opening
+    /// plays first. `speed` below 1 plays the scene in slow motion (snapshot mode only).
+    func recordClip(seconds: Double, scale: CGFloat = 4, intro: Bool = false, speed: Double = 1,
                     change: (Double) -> Void = { _ in }) async -> [ClipFrame] {
+        let start = Date()
+        virtualNow = start
+        last = start
+        defer { virtualNow = nil }
         if intro { wokeSinceLastFull = true; beginIntro() }
         // One renderer for the whole clip; making one per frame halves the frame rate.
         let renderer = SCNRenderer(device: MTLCreateSystemDefaultDevice(), options: nil)
@@ -1141,17 +1149,14 @@ final class MacScene: ObservableObject {
         renderer.pointOfView = cameraNode
         let pixels = CGSize(width: size.width * scale, height: size.height * scale)
         var frames: [ClipFrame] = []
-        let start = Date()
-        last = start
-        while case let t = Date().timeIntervalSince(start), t <= seconds {
+        for index in 0...Int(seconds * 30) {
+            let t = Double(index) / 30
+            virtualNow = start.addingTimeInterval(t * speed)
             change(t)
             tick()
-            // Keep one frame per video frame (30 fps); more only costs memory.
-            if t - (frames.last?.time ?? -1) >= 1.0 / 30 {
-                let image = renderer.snapshot(atTime: t, with: pixels, antialiasingMode: .multisampling4X)
-                frames.append(ClipFrame(time: t, image: image, pills: pills, anchors: portAnchors))
-            }
-            try? await Task.sleep(for: .milliseconds(2))
+            let image = renderer.snapshot(atTime: t, with: pixels, antialiasingMode: .multisampling4X)
+            frames.append(ClipFrame(time: t, image: image, pills: pills, anchors: portAnchors))
+            await Task.yield()
         }
         return frames
     }
