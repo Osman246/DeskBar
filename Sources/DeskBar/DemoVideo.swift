@@ -68,6 +68,7 @@ enum DemoVideo {
         let images = FileManager.default.currentDirectoryPath + "/docs/images/"
         let shots = Shots(panel: NSImage(contentsOfFile: images + "panel-dark.png"),
                           memory: NSImage(contentsOfFile: images + "memory.png"),
+                          disk: NSImage(contentsOfFile: images + "disk.png"),
                           battery: NSImage(contentsOfFile: images + "battery.png"),
                           alertPanel: NSImage(contentsOfFile: images + "alert-panel.png"),
                           alertMemory: NSImage(contentsOfFile: images + "alert-memory.png"))
@@ -131,6 +132,7 @@ enum DemoVideo {
     struct Shots {
         var panel: NSImage?
         var memory: NSImage?
+        var disk: NSImage?
         var battery: NSImage?
         var alertPanel: NSImage?
         var alertMemory: NSImage?
@@ -299,7 +301,7 @@ private struct Kicker: View {
 
 // MARK: - One frame
 
-private struct DemoFrame: View {
+struct DemoFrame: View {
     let t: Double
     let clips: [DemoVideo.Part: [MacScene.ClipFrame]]
     let shots: DemoVideo.Shots
@@ -353,7 +355,7 @@ private struct DemoFrame: View {
     private var finish: some View {
         ZStack(alignment: .topLeading) {
             if Self.flashes.contains(part) {
-                Color.white.opacity(0.28 * (1 - clamp(local / 0.12)))
+                Color.white.opacity(0.1 * (1 - clamp(local / 0.15)))
             }
             RadialGradient(colors: [.clear, .black.opacity(0.5)], center: .center, startRadius: 420, endRadius: 920)
             Rectangle().fill(Color.white.opacity(0.85))
@@ -499,12 +501,11 @@ private struct DemoFrame: View {
         switch part {
         case .dashboard where local < 1.4:
             return (glide(CGPoint(x: 700, y: 160), Self.itemCentre, ease(local / 0.06)), clicking(local - 0.04), Self.itemCentre)
-        case .dashboard where local > 9.05:
-            let memory = Self.memoryTile, battery = Self.batteryTile
-            if local < 10.85 {
-                return (glide(CGPoint(x: 540, y: 1150), memory, ease((local - 9.05) / 0.5)), clicking(local - 9.6), memory)
-            }
-            return (glide(memory, battery, ease((local - 10.85) / 0.35)), clicking(local - 11.25), battery)
+        case .dashboard where local > 8.3:
+            let tiles = [Self.memoryTile, Self.diskTile, Self.batteryTile], clicks = Self.tileClicks
+            let i = clicks.lastIndex { local >= $0 - 0.55 } ?? 0
+            let start = i == 0 ? CGPoint(x: 540, y: 1150) : tiles[i - 1]
+            return (glide(start, tiles[i], ease((local - (clicks[i] - 0.55)) / 0.45)), clicking(local - clicks[i]), tiles[i])
         case .outcome where local < 1.2:
             return (glide(CGPoint(x: 560, y: 1150), Self.topBanner, ease(local / 0.5)), clicking(local - 0.55), Self.topBanner)
         default: return nil
@@ -546,8 +547,11 @@ private struct DemoFrame: View {
     }
 
     private var caption: some View {
-        topCaption(captionText.headline, captionText.line, time: local, leave: leaving)
+        topCaption(captionText.headline, captionText.line, time: local, leave: part == .heat ? 0 : leaving)
     }
+
+    /// The Mac sits lower in the alert shots, so the banners have room above it.
+    static func stageDrop(_ part: DemoVideo.Part) -> CGFloat { part == .heat || part == .outcome ? 90 : 0 }
 
     private func topCaption(_ headline: String, _ line: String, time: Double, leave: Double) -> some View {
         VStack(spacing: 14) {
@@ -582,7 +586,7 @@ private struct DemoFrame: View {
         }
         .frame(width: stage.width, height: stage.height, alignment: .topLeading)
         .scaleEffect(push)
-        .offset(x: stage.minX, y: stage.minY)
+        .offset(x: stage.minX, y: stage.minY + Self.stageDrop(part))
         .overlay(alignment: .topLeading) { status(now) }
     }
 
@@ -600,7 +604,7 @@ private struct DemoFrame: View {
                 }
             }
             .frame(width: DemoVideo.size.width)
-            .offset(y: Self.stage.maxY + 22)
+            .offset(y: Self.stage.maxY + 22 + Self.stageDrop(part))
             .opacity(easeOut(local / 0.3) * (1 - leaving))
         }
     }
@@ -651,7 +655,7 @@ private struct DemoFrame: View {
         (4.5, "memorychip", Color(red: 1, green: 0.72, blue: 0.2), "Memory full", "Apps may slow down. Safari is using 6.0 GB."),
     ]
     /// Where the newest banner sits, for the pointer.
-    static let topBanner = CGPoint(x: DemoFrame.stage.maxX - 270, y: DemoFrame.stage.minY + 80)
+    static let topBanner = CGPoint(x: 540, y: 400)
 
     private func notifications(at time: Double) -> some View {
         let alerts = Self.alerts
@@ -666,8 +670,8 @@ private struct DemoFrame: View {
     }
 
     private func notification(_ symbol: String, _ tint: Color, _ title: String, _ body: String, arrival p: Double, depth: Double) -> some View {
-        let x: CGFloat = Self.stage.maxX - 540 + 60 * (1 - p)
-        let y: CGFloat = Self.stage.minY - 10 + 24 * depth
+        let x: CGFloat = 200
+        let y: CGFloat = 330 + 22 * depth - 40 * (1 - p)
         let scale: CGFloat = 1 - 0.05 * depth
         return HStack(alignment: .top, spacing: 18) {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -681,13 +685,13 @@ private struct DemoFrame: View {
                     Text("now").font(.system(size: 18)).foregroundStyle(Color(white: 0.6))
                 }
                 Text(title).font(.system(size: 26, weight: .semibold)).foregroundStyle(.white)
-                Text(body).font(.system(size: 22)).foregroundStyle(Color(white: 0.8))
-                    .lineLimit(3)
+                Text(body).font(.system(size: 23)).foregroundStyle(Color(white: 0.82))
+                    .lineLimit(2)
             }
             .opacity(1 - clamp(depth * 2))   // only the newest one's text shows
         }
         .padding(22)
-        .frame(width: 540, height: 186, alignment: .topLeading)   // one height, so the stack lines up
+        .frame(width: 680, height: 148, alignment: .topLeading)   // one height, so the stack lines up
         .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color(white: 0.17 - 0.03 * min(depth, 2))))
         .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
         .shadow(color: .black.opacity(0.6), radius: 24, y: 10)
@@ -698,53 +702,53 @@ private struct DemoFrame: View {
 
     // MARK: The dashboard: one continuous shot of the real panel
 
-    /// Where the Memory and Battery tiles land while the tour frames them, in canvas points.
-    static let memoryTile = CGPoint(x: 231, y: 406)
-    static let batteryTile = CGPoint(x: 849, y: 406)
-    static let tourView = CGRect(x: 60, y: 330, width: 960, height: 720)
+    /// The tiles while the tour frames them, in canvas points.
+    static let memoryTile = CGPoint(x: 225, y: 484)
+    static let diskTile = CGPoint(x: 540, y: 484)
+    static let batteryTile = CGPoint(x: 855, y: 484)
+    static let tourView = CGRect(x: 60, y: 360, width: 960, height: 700)
     static let tourScale: CGFloat = 960 / 680
+    /// Clicks on the tiles, in seconds into the dashboard.
+    static let tileClicks: [Double] = [8.85, 10.25, 11.65]
     /// The tour's stops: when it gets there, which part of the screenshot it centres, and what it says.
     private static let stops: [(at: Double, centre: CGFloat, title: String, detail: String)] = [
-        (3.4, 230, "A living 3D Mac", "One verdict on top: “All good”, or what isn't."),
-        (4.8, 542, "CPU, heat and fans", "Every core at a glance, with a short history."),
-        (6.2, 1085, "Network, sound, display", "Speed test, devices and smart alerts, one line each."),
-        (7.6, 1445, "Quick actions", "Focus, keep awake, lock and more, one tap each."),
-        (9.0, 908, "Memory, disk, battery", "Plus Wi-Fi. Click any tile for the detail."),
-        (11.35, 1000, "Memory, disk, battery", "Plus Wi-Fi. Click any tile for the detail."),
+        (3.3, 230, "A living 3D Mac", "One verdict on top: “All good”, or what isn't."),
+        (4.5, 542, "CPU, heat and fans", "Every core at a glance, with a short history."),
+        (5.7, 1085, "Network, sound, display", "Speed test, devices and smart alerts, one line each."),
+        (6.9, 1445, "Quick actions", "Focus, keep awake, lock and more, one tap each."),
+        (8.1, 860, "Memory, disk, battery", "Click any tile for what's behind it."),
     ]
 
     /// Click, the real panel drops under the menu bar item, then the camera flies into it and reads it
-    /// top to bottom; at the tiles, the pointer opens Memory, then Battery, in place.
+    /// top to bottom; back at the tiles, the pointer opens Memory, Disk and Battery in place.
     private var dashboard: some View {
-        let k = Self.tourScale, view = Self.tourView
-        // Where the camera is centred, eased from stop to stop.
-        let stops = Self.stops
+        let k = Self.tourScale, view = Self.tourView, stops = Self.stops
         let index = stops.lastIndex { local >= $0.at } ?? 0
         let from = stops[max(index - 1, 0)].centre, to = stops[index].centre
-        let centre = local < stops[0].at ? stops[0].centre : from + (to - from) * ease((local - stops[index].at) / 0.45)
-        func scroll(_ c: CGFloat) -> CGFloat { min(0, max(view.height - 2316 * k, view.height / 2 - c * k)) }
-        // From the dropped panel (428 wide, under the menu bar item) to the tour's framing.
-        let fly = ease((local - 2.6) / 0.8)
-        let revealK: CGFloat = 428 / 680
-        let scale = revealK + (k - revealK) * fly
-        let x = 612 + (view.minX - 612) * fly
-        let y = 64 + (view.minY + scroll(centre) - 64) * fly
+        // The last move goes back up the panel, so it takes longer.
+        let moveTime = index == stops.count - 1 ? 0.75 : 0.45
+        let centre = local < stops[0].at ? stops[0].centre : from + (to - from) * ease((local - stops[index].at) / moveTime)
+        let scroll = min(0, max(view.height - 2316 * k, view.height / 2 - centre * k))
+        // One move from the dropped panel (under the menu bar item) to the tour's framing.
+        let fly = ease((local - 2.4) / 0.8)
+        let s0: CGFloat = 428 / 680
+        let drop = springy((local - 0.08) / 0.45)
+        let scale = s0 + (k - s0) * fly
+        let px = 612 + (view.minX - 612) * fly
+        let py = (64 - 24 * (1 - drop)) + (view.minY + scroll - 64) * fly
         let clip = CGRect(x: 612 + (view.minX - 612) * fly, y: 64 + (view.minY - 64) * fly,
                           width: 428 + (view.width - 428) * fly, height: 1099 + (view.height - 1099) * fly)
-        let drop = springy((local - 0.08) / 0.45)
-        let toMemory = easeOut((local - 9.65) / 0.25), toBattery = easeOut((local - 11.3) / 0.25)
-        let stop = local < 3.4 ? nil : stops[min(index, 4)]
-        let stopIndex = min(index, 4)
-        let label = stop == nil ? 0 : easeOut((local - stops[stopIndex].at - 0.15) / 0.35)
+        // Each tile click expands its detail below the tiles, like the real panel.
+        let wipes = Self.tileClicks.map { ease((local - $0 - 0.08) / 0.4) }
+        let label = local < stops[0].at ? 0 : easeOut((local - stops[index].at - 0.15) / 0.35)
         return ZStack(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
                 panelImage(shots.panel, 1746, scale: scale)
-                panelImage(shots.memory, 2144, scale: scale).opacity(toMemory * (1 - toBattery))
-                panelImage(shots.battery, 2316, scale: scale).opacity(toBattery)
+                expanding(shots.memory, 2144, scale: scale, wipe: wipes[0])
+                expanding(shots.disk, 2070, scale: scale, wipe: wipes[1])
+                expanding(shots.battery, 2316, scale: scale, wipe: wipes[2])
             }
-            .offset(x: x, y: y - 24 * (1 - drop))
-            .scaleEffect(0.92 + 0.08 * drop, anchor: .top)
-            .opacity(clamp(drop * 2))
+            .offset(x: px, y: py)
             .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
             .mask {
                 RoundedRectangle(cornerRadius: 14 + 8 * fly, style: .continuous)
@@ -752,6 +756,7 @@ private struct DemoFrame: View {
                     .offset(x: clip.minX, y: clip.minY)
                     .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
             }
+            .opacity(clamp(drop * 2))
             // Before the fly-in: what it is.
             VStack(alignment: .leading, spacing: 16) {
                 Kicker(text: "Introducing DeskBar", time: local - 0.3, size: 28)
@@ -762,18 +767,18 @@ private struct DemoFrame: View {
                     .opacity(easeOut((local - 0.95) / 0.35))
             }
             .offset(x: 60, y: 430)
-            .opacity(1 - clamp((local - 2.4) / 0.3))
-            // The tour's headline, then the detail's.
-            if local > 2.9 && local < 9.0 {
-                topCaption("Everything, *at a glance.*", "One panel, read top to bottom.", time: local - 2.9,
-                           leave: clamp((local - 8.75) / 0.22))
-            } else if local >= 9.0 {
-                topCaption("Detail *on request.*", "Click any tile to see what's behind it.", time: local - 9.0, leave: leaving)
+            .opacity(1 - clamp((local - 2.2) / 0.3))
+            if local > 2.7 && local < 8.1 {
+                topCaption("Everything, *at a glance.*", "One panel, read top to bottom.", time: local - 2.7,
+                           leave: clamp((local - 7.85) / 0.22))
+            } else if local >= 8.1 {
+                topCaption("Detail *on request.*", "Click any tile to see what's behind it.", time: local - 8.1, leave: leaving)
             }
-            if let stop {
+            if local >= stops[0].at {
+                let stop = stops[index]
                 VStack(spacing: 6) {
                     HStack(spacing: 14) {
-                        Text(String(format: "%02d / 05", stopIndex + 1)).monospacedDigit().foregroundStyle(Color(white: 0.5))
+                        Text(String(format: "%02d / %02d", index + 1, stops.count)).monospacedDigit().foregroundStyle(Color(white: 0.5))
                         Text(stop.title).font(serif(44)).foregroundStyle(.white)
                     }
                     .font(.system(size: 24, weight: .semibold))
@@ -786,6 +791,19 @@ private struct DemoFrame: View {
             }
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+    }
+
+    /// A tile's expanded view, revealed downward from the bottom of the tiles as `wipe` goes 0 → 1.
+    @ViewBuilder private func expanding(_ image: NSImage?, _ height: CGFloat, scale: CGFloat, wipe: Double) -> some View {
+        if wipe > 0 {
+            let edge = (780 + (height - 780) * wipe) * scale
+            panelImage(image, height, scale: scale)
+                .mask(alignment: .top) {
+                    LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.92), .init(color: .clear, location: 1)],
+                                   startPoint: .top, endPoint: .bottom)
+                        .frame(height: edge + 40)
+                }
+        }
     }
 
     @ViewBuilder private func panelImage(_ image: NSImage?, _ height: CGFloat, scale: CGFloat) -> some View {
@@ -846,39 +864,39 @@ private struct DemoFrame: View {
 
     // MARK: The alert's outcome
 
-    /// The pointer opens the Memory alert, and the real panel shows what's behind it.
+    /// The pointer opens the Memory alert; the alerts zoom away, then the real panel shows what's behind it.
     private var outcome: some View {
-        let away = ease((local - 0.6) / 0.4)
-        let open = easeOut((local - 0.75) / 0.45)
+        let away = ease((local - 0.55) / 0.3)
+        let open = easeOut((local - 0.85) / 0.45)
         let k = Self.tourScale, view = Self.tourView
-        let scroll = min(0, max(view.height - 2144 * k, view.height / 2 - 905 * k))
+        let scroll = min(0, max(view.height - 2144 * k, view.height / 2 - 860 * k))
         let push = 1 + 0.03 * local / length
         return ZStack(alignment: .topLeading) {
-            ZStack(alignment: .topLeading) {
-                if let mac = clips[.heat]?.last {
-                    Image(nsImage: mac.image).resizable()
-                        .frame(width: Self.stage.width, height: Self.stage.height)
-                        .offset(x: Self.stage.minX, y: Self.stage.minY)
+            if away < 1 {
+                ZStack(alignment: .topLeading) {
+                    if let mac = clips[.heat]?.last {
+                        Image(nsImage: mac.image).resizable()
+                            .frame(width: Self.stage.width, height: Self.stage.height)
+                            .offset(x: Self.stage.minX, y: Self.stage.minY + Self.stageDrop(.outcome))
+                    }
+                    notifications(at: 10)
+                    topCaption("Warns you *early.*", "Before heat, memory, disk or battery become a problem.", time: 10, leave: 0)
                 }
-                notifications(at: 10)
+                .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+                .scaleEffect(1 + 0.08 * away)
+                .opacity(1 - away)
             }
-            .scaleEffect(1 - 0.06 * away)
-            .opacity(1 - away)
-            ZStack(alignment: .topLeading) {
-                panelImage(shots.alertMemory, 2144, scale: k).offset(y: scroll)
-            }
-            .frame(width: view.width, height: view.height, alignment: .topLeading)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.orange.opacity(0.35), lineWidth: 2))
-            .scaleEffect((0.9 + 0.1 * open) * push)
-            .offset(x: view.minX, y: view.minY + 40 * (1 - open))
-            .opacity(open * (1 - leaving))
-            if local > 0.9 {
+            if open > 0 {
+                ZStack(alignment: .topLeading) {
+                    panelImage(shots.alertMemory, 2144, scale: k).offset(y: scroll)
+                }
+                .frame(width: view.width, height: view.height, alignment: .topLeading)
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
+                .scaleEffect((0.94 + 0.06 * open) * push)
+                .offset(x: view.minX, y: view.minY + 40 * (1 - open))
+                .opacity(open * (1 - leaving))
                 topCaption("See exactly *what's using it.*", "Memory full: Safari is using 6.0 GB.", time: local - 0.9, leave: leaving)
-            }
-            if local < 0.9 {
-                topCaption("Warns you *early.*", "Before heat, memory, disk or battery become a problem.", time: 10,
-                           leave: clamp((local - 0.6) / 0.25))
             }
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
@@ -893,7 +911,8 @@ private struct DemoFrame: View {
         let k = Self.tourScale
         let view = CGRect(x: 60, y: 300, width: 960, height: 600)
         let scroll = min(0, max(view.height - 1746 * k, view.height / 2 - 230 * k))
-        let fixed = easeOut((into - 1.5) / 0.4)
+        let fixed = into >= 1.5
+        let glow = into >= 1.5 ? 1 - clamp((into - 1.5) / 0.6) : 0
         return ZStack {
             if !second {
                 VStack(spacing: 34) {
@@ -906,13 +925,13 @@ private struct DemoFrame: View {
             } else {
                 ZStack(alignment: .topLeading) {
                     ZStack(alignment: .topLeading) {
-                        panelImage(shots.alertPanel, 1746, scale: k).offset(y: scroll)
-                        panelImage(shots.panel, 1746, scale: k).offset(y: scroll).opacity(fixed)
+                        panelImage(fixed ? shots.panel : shots.alertPanel, 1746, scale: k).offset(y: scroll)
                     }
                     .frame(width: view.width, height: view.height, alignment: .topLeading)
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
-                    .scaleEffect(1 + 0.03 * into / 4)
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.white.opacity(0.1 + 0.6 * glow), lineWidth: 2 + 3 * glow))
+                    .shadow(color: Color.green.opacity(0.35 * glow), radius: 40 * glow)
+                    .scaleEffect(1 + 0.03 * into / 4 + 0.015 * glow)
                     .offset(x: view.minX, y: view.minY)
                     .opacity(easeOut(into / 0.3) * (1 - leaving))
                     VStack(spacing: 12) {
@@ -1114,16 +1133,15 @@ enum DemoSound {
         whoosh(at(.hook) + 1.45, 0.45, 0.5)
         click(at(.dashboard) + 0.04)
         whoosh(at(.dashboard) + 0.1, 0.35, 0.25)
-        whoosh(at(.dashboard) + 2.6, 0.8, 0.3)
-        for offset in [4.8, 6.2, 7.6, 9.0] { whoosh(at(.dashboard) + offset, 0.45, 0.12) }
-        click(at(.dashboard) + 9.6)
-        click(at(.dashboard) + 11.25)
+        whoosh(at(.dashboard) + 2.4, 0.8, 0.3)
+        for offset in [4.5, 5.7, 6.9, 8.1] { whoosh(at(.dashboard) + offset, 0.45, 0.12) }
+        for offset in DemoFrame.tileClicks { click(at(.dashboard) + offset) }
         for part in [DemoVideo.Part.lid, .plug, .ports, .heat] { whoosh(at(part), 0.3, 0.22) }
         thud(at(.news) + 0.1)
         for offset in [0.6, 1.9, 3.2, 4.5] { chime(at(.heat) + offset) }
         click(at(.outcome) + 0.55)
         whoosh(at(.outcome) + 0.65, 0.45, 0.25)
-        whoosh(at(.thesis) + 3.0, 0.35, 0.25)
+        chime(at(.thesis) + 4.5)
         swell(at(.brand), 3.0)
         pop(at(.cta) + 0.8)
         for i in samples.indices { samples[i] = max(-0.9, min(0.9, samples[i])) }
