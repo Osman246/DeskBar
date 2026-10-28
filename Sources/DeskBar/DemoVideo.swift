@@ -2,7 +2,7 @@ import AVFoundation
 import CoreText
 import SwiftUI
 
-/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 52-second
+/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 53-second
 /// launch video (1080 × 1350, 30 fps) from the real 3D Mac, recorded live. Everything else
 /// (captions, menu bar, cursor) is drawn here, cut like a short cinematic edit: black, serif
 /// headlines. The first frame already reads, since feeds autoplay muted.
@@ -18,7 +18,7 @@ enum DemoVideo {
 
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
-    static let lengths: [Part: Double] = [.hook: 3.0, .news: 7.4, .menuBar: 2.2, .open: 3.6, .lid: 3.2, .plug: 4.4,
+    static let lengths: [Part: Double] = [.hook: 3.25, .news: 7.4, .menuBar: 2.2, .open: 3.6, .lid: 3.2, .plug: 4.4,
                                           .ports: 4.8, .heat: 6.6, .actions: 3.0, .thesis: 8.4, .end: 5.8]
     static var total: Double { lengths.values.reduce(0, +) }
     nonisolated(unsafe) static var serif = "Hoefler Text"   // set once before rendering
@@ -337,10 +337,9 @@ private struct DemoFrame: View {
 
     // MARK: Hook
 
-    /// Readable from the very first frame (feeds autoplay muted): the question over the Mac, then a
-    /// quick montage of the places you'd check today.
+    /// Readable from the very first frame (feeds autoplay muted): the question over the Mac. Then the
+    /// four places you'd check today pile up as windows, and collapse into one menu bar item.
     private var hook: some View {
-        let places = ["Activity Monitor.", "System Settings.", "Control Centre.", "The battery menu."]
         let montage = local - 1.4
         return ZStack(alignment: .topLeading) {
             if montage < 0 {
@@ -357,43 +356,90 @@ private struct DemoFrame: View {
                     .frame(width: DemoVideo.size.width)
                     .offset(y: 170)
             } else {
-                let step = 0.36
-                let i = min(Int(montage / step), places.count - 1)
-                let into = montage - Double(i) * step
-                VStack(spacing: 26) {
-                    Kicker(text: "Today you'd check", time: 1)
-                    Text(places[i])
-                        .font(serif(92))
-                        .italic()
-                        .foregroundStyle(.white)
-                        .scaleEffect(1.08 - 0.08 * easeOut(into / 0.3))
-                }
-                .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
-                .opacity(1 - clamp((montage - 1.42) / 0.15))
-                Color.white.opacity(0.22 * (1 - clamp(into / 0.08)))   // a flash on every word
+                clutter(montage)
             }
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+    }
+
+    /// The places you'd check today: four windows, then all of them into the menu bar.
+    private static let places: [(name: String, symbol: String, centre: CGPoint, angle: Double)] = [
+        ("Activity Monitor", "waveform.path.ecg", CGPoint(x: 330, y: 560), -5),
+        ("System Settings", "gearshape.fill", CGPoint(x: 740, y: 660), 4),
+        ("Control Centre", "switch.2", CGPoint(x: 360, y: 860), 3),
+        ("Battery menu", "battery.75percent", CGPoint(x: 720, y: 960), -4),
+    ]
+
+    private func clutter(_ t: Double) -> some View {
+        let collapse = ease((t - 1.4) / 0.45)
+        return ZStack(alignment: .topLeading) {
+            Text("TODAY YOU'D CHECK")
+                .font(.system(size: 30, weight: .semibold)).tracking(10)
+                .foregroundStyle(Color(white: 0.7))
+                .frame(width: DemoVideo.size.width)
+                .offset(y: 300)
+                .opacity(easeOut(t / 0.25) * (1 - collapse))
+            ForEach(Array(Self.places.enumerated()), id: \.offset) { i, place in
+                placeWindow(place.name, place.symbol, pop: springy((t - 0.1 - Double(i) * 0.26) / 0.4))
+                    .rotationEffect(.degrees(place.angle * (1 - collapse)))
+                    .scaleEffect(1 - 0.94 * collapse)
+                    .position(x: place.centre.x + (Self.itemCentre.x - place.centre.x) * collapse,
+                              y: place.centre.y + (Self.itemCentre.y - place.centre.y) * collapse)
+                    .opacity(1 - clamp((collapse - 0.85) / 0.15))
+            }
+            // The menu bar item lights up as they land.
+            let land = clamp((t - 1.8) / 0.3)
+            if land > 0 {
+                Circle()
+                    .strokeBorder(Color.white.opacity(0.8 * (1 - land)), lineWidth: 3)
+                    .frame(width: 40 + 160 * land, height: 40 + 160 * land)
+                    .position(Self.itemCentre)
+            }
+        }
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+    }
+
+    /// A small macOS-style window: traffic lights, an icon and the app's name.
+    private func placeWindow(_ name: String, _ symbol: String, pop: Double) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 9) {
+                Circle().fill(Color(red: 1, green: 0.37, blue: 0.34)).frame(width: 14, height: 14)
+                Circle().fill(Color(red: 1, green: 0.74, blue: 0.18)).frame(width: 14, height: 14)
+                Circle().fill(Color(red: 0.16, green: 0.79, blue: 0.25)).frame(width: 14, height: 14)
+            }
+            HStack(spacing: 18) {
+                Image(systemName: symbol).font(.system(size: 40, weight: .medium)).foregroundStyle(.white)
+                    .frame(width: 56)
+                Text(name).font(.system(size: 36, weight: .semibold)).foregroundStyle(.white)
+            }
+        }
+        .padding(28)
+        .frame(width: 440, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(white: 0.15)))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.white.opacity(0.12)))
+        .shadow(color: .black.opacity(0.6), radius: 24, y: 10)
+        .scaleEffect(0.6 + 0.4 * pop)
+        .opacity(clamp(pop * 1.8))
     }
 
     // MARK: Menu bar and cursor
 
     private var introducing: some View {
         VStack(spacing: 22) {
-            Kicker(text: "Introducing", time: local - 0.1)
-            Headline(text: "DeskBar.", size: 150, time: local - 0.25, leave: leaving)
+            Kicker(text: "Introducing", time: local)
+            Headline(text: "DeskBar.", size: 150, time: local - 0.05, leave: leaving)
             Text("It lives in your menu bar.")
                 .font(.system(size: 32))
                 .foregroundStyle(Color(white: 0.6))
-                .opacity(easeOut((local - 0.7) / 0.4) * (1 - leaving))
+                .opacity(easeOut((local - 0.45) / 0.35) * (1 - leaving))
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
     }
 
     private var menuBarShown: Double {
         switch part {
-        case .hook: 0
-        case .menuBar: easeOut(local / 0.35)
+        case .hook: easeOut((local - 1.4 - 1.35) / 0.3)   // slides in as the windows fly up into it
+        case .menuBar: 1
         case .end: 1 - ease(local / 0.4)
         default: 1
         }
@@ -443,7 +489,7 @@ private struct DemoFrame: View {
         let start = CGPoint(x: 540, y: 1000), end = Self.itemCentre
         switch part {
         case .menuBar:
-            let p = ease((local - 0.45) / 0.75)
+            let p = ease((local - 0.3) / 0.75)
             return CGPoint(x: start.x + (end.x - start.x) * p + 10, y: start.y + (end.y - start.y) * p + 6)
         case .open where local < 0.6:
             return CGPoint(x: end.x + 10, y: end.y + 6)
