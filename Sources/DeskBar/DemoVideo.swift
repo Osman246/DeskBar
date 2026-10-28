@@ -16,12 +16,12 @@ import SwiftUI
 @MainActor
 enum DemoVideo {
     /// `open` is only a recording (the 3D Mac's opening, shown under the brand card).
-    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open }
+    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open, portsRight }
 
     static let sequence: [Part] = [.hook, .dashboard, .lid, .plug, .ports, .news, .heat, .outcome, .thesis, .brand, .cta]
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
-    static let lengths: [Part: Double] = [.hook: 2.45, .dashboard: 12.55, .lid: 2.8, .plug: 3.0, .ports: 4.0, .news: 4.2,
+    static let lengths: [Part: Double] = [.hook: 2.15, .dashboard: 12.85, .lid: 2.8, .plug: 3.0, .ports: 4.0, .news: 4.2,
                                           .heat: 6.0, .outcome: 6.0, .thesis: 7.0, .brand: 5.0, .cta: 7.0, .open: 0]
     static var total: Double { sequence.reduce(0) { $0 + lengths[$1]! } }
     /// When each part starts, for the sound track.
@@ -193,11 +193,17 @@ enum DemoVideo {
             if t > 1.2 && !atDesk { atDesk = true; mac.update(desk); mac.setMode(.desk) }
         }
 
+        // Each side recorded on its own; the video starts each once the camera has nearly arrived and
+        // cuts between them, instead of swinging round the Mac.
         reset(desk)
-        var leftSide = false, rightSide = false
-        clips[.ports] = await mac.recordClip(seconds: 4.0) { t in
+        var leftSide = false
+        clips[.ports] = await mac.recordClip(seconds: 3.2) { _ in
             if !leftSide { leftSide = true; mac.setMode(.ports(.left)) }
-            if t > 1.9 && !rightSide { rightSide = true; mac.setMode(.ports(.right)) }
+        }
+        reset(desk)
+        var rightSide = false
+        clips[.portsRight] = await mac.recordClip(seconds: 3.2) { _ in
+            if !rightSide { rightSide = true; mac.setMode(.ports(.right)) }
         }
 
         // The screen and the status follow each alert as it arrives (times match `alerts`).
@@ -354,9 +360,6 @@ struct DemoFrame: View {
     /// Flash, vignette and the progress line, over everything.
     private var finish: some View {
         ZStack(alignment: .topLeading) {
-            if Self.flashes.contains(part) {
-                Color.white.opacity(0.1 * (1 - clamp(local / 0.15)))
-            }
             RadialGradient(colors: [.clear, .black.opacity(0.5)], center: .center, startRadius: 420, endRadius: 920)
             Rectangle().fill(Color.white.opacity(0.85))
                 .frame(width: DemoVideo.size.width * t / DemoVideo.total, height: 3)
@@ -585,7 +588,15 @@ struct DemoFrame: View {
 
     // MARK: The 3D Mac
 
-    private var clip: [MacScene.ClipFrame] { clips[part] ?? [] }
+    /// The ports scene shows the left side, then cuts to the right, each from just before it settles.
+    private static let portsSwitch = 2.0, portsLead = 0.95
+    private var clip: [MacScene.ClipFrame] {
+        part == .ports && local >= Self.portsSwitch ? clips[.portsRight] ?? [] : clips[part] ?? []
+    }
+    /// Where in its recording the current shot is.
+    private var clipTime: Double {
+        part == .ports ? (local >= Self.portsSwitch ? local - Self.portsSwitch : local) + Self.portsLead : local
+    }
 
     private func frame(at time: Double) -> MacScene.ClipFrame? {
         clip.last { $0.time <= time } ?? clip.first
@@ -593,7 +604,7 @@ struct DemoFrame: View {
 
     private var product: some View {
         let stage = Self.stage
-        let now = frame(at: local)
+        let now = frame(at: clipTime)
         let push = 1 + 0.045 * local / length   // slow push-in through the shot
         return ZStack(alignment: .topLeading) {
             if let now {
@@ -629,10 +640,10 @@ struct DemoFrame: View {
 
     /// Rings on the ports and labels below, arriving one after another once the camera settles.
     private func portLabels(_ now: MacScene.ClipFrame) -> some View {
-        let side: Ports.Side = local < 1.9 ? .left : .right
+        let side: Ports.Side = local < Self.portsSwitch ? .left : .right
         let ports = DemoVideo.ports(DemoVideo.shownPorts).filter { $0.side == side && now.anchors[$0.id] != nil }
         // How long the anchors have been showing.
-        let since = clip.reversed().drop { $0.time > local }.prefix { !$0.anchors.isEmpty }.last.map { local - $0.time } ?? 0
+        let since = clip.reversed().drop { $0.time > clipTime }.prefix { !$0.anchors.isEmpty }.last.map { clipTime - $0.time } ?? 0
         return ZStack(alignment: .topLeading) {
             LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: UnitPoint(x: 0.5, y: 0.42), endPoint: UnitPoint(x: 0.5, y: 0.64))
             ForEach(Array(ports.sorted { $0.z < $1.z }.enumerated()), id: \.element.id) { i, port in
@@ -935,8 +946,8 @@ struct DemoFrame: View {
 
     /// The pointer opens the Memory alert; the alerts zoom away, then the real panel shows what's behind it.
     private var outcome: some View {
-        let away = ease((local - 0.55) / 0.3)
-        let open = easeOut((local - 0.85) / 0.45)
+        let away = ease((local - 0.55) / 0.22)
+        let open = easeOut((local - 0.77) / 0.4)
         let f = Framing.fit(Self.tilesCard.0, Self.detailEnds[0])
         return ZStack(alignment: .topLeading) {
             if away < 1 {
@@ -977,6 +988,7 @@ struct DemoFrame: View {
             if !second {
                 VStack(spacing: 34) {
                     Kicker(text: "What building it taught me", time: local - 0.1, size: 30)
+                        .opacity(1 - clamp((local - 2.8) / 0.2))
                     Headline(text: "Nobody wants a dashboard.|*They want one sentence.*", size: 76, time: local - 0.15,
                              leave: clamp((local - 2.8) / 0.2))
                         .frame(height: 200)
@@ -998,7 +1010,6 @@ struct DemoFrame: View {
                     .offset(y: f.rect.maxY + 50)
                 }
                 .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
-                Color.white.opacity(0.25 * (1 - clamp(into / 0.1)))
             }
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
@@ -1050,7 +1061,6 @@ struct DemoFrame: View {
             .offset(y: 1150)
             .opacity(easeOut((local - 1.4) / 0.5))
         }
-        .opacity(1 - leaving)
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
     }
 
@@ -1059,8 +1069,7 @@ struct DemoFrame: View {
         let button = springy((local - 0.8) / 0.45)
         return VStack(spacing: 0) {
             mark(36)
-                .opacity(easeOut(local / 0.35))
-            Headline(text: "DeskBar.", size: 150, time: local - 0.1)
+            Headline(text: "DeskBar.", size: 150, time: local + 1)
                 .padding(.top, 14)
             Text("Free and open source for macOS.")
                 .font(.system(size: 38))
