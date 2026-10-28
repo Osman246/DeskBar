@@ -2,26 +2,28 @@ import AVFoundation
 import CoreText
 import SwiftUI
 
-/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a one-minute
+/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 52-second
 /// launch video (1080 × 1350, 30 fps) from the real 3D Mac, recorded live. Everything else
 /// (captions, menu bar, cursor) is drawn here, cut like a short cinematic edit: black, serif
 /// headlines. The first frame already reads, since feeds autoplay muted.
 ///
-/// `--credit "Built by …"` adds a credit line to the end card.
+/// `--credit "Built by …"` adds a credit line to the end card, and `--credit-note "…"` a small line
+/// under it.
 ///
 /// The headlines use EB Garamond (SIL Open Font License) when its .ttf files are in the `--fonts`
 /// directory, and macOS's Hoefler Text otherwise.
 @MainActor
 enum DemoVideo {
-    enum Part: CaseIterable { case hook, menuBar, open, lid, plug, ports, desk, news, heat, actions, thesis, end }
+    enum Part: CaseIterable { case hook, menuBar, open, lid, plug, ports, news, heat, actions, thesis, end }
 
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
-    static let lengths: [Part: Double] = [.hook: 3.0, .news: 8.0, .menuBar: 2.2, .open: 3.6, .lid: 3.8, .plug: 4.0,
-                                          .ports: 5.2, .desk: 3.6, .heat: 6.6, .actions: 3.0, .thesis: 8.9, .end: 4.4]
+    static let lengths: [Part: Double] = [.hook: 3.0, .news: 7.4, .menuBar: 2.2, .open: 3.6, .lid: 3.2, .plug: 4.4,
+                                          .ports: 4.8, .heat: 6.6, .actions: 3.0, .thesis: 8.4, .end: 5.8]
     static var total: Double { lengths.values.reduce(0, +) }
     nonisolated(unsafe) static var serif = "Hoefler Text"   // set once before rendering
     nonisolated(unsafe) static var credit: String?
+    nonisolated(unsafe) static var creditNote: String?
 
     /// Where `t` falls: the part and the time into it.
     static func part(at t: Double) -> (Part, Double) {
@@ -45,6 +47,9 @@ enum DemoVideo {
         }
         if let i = CommandLine.arguments.firstIndex(of: "--credit"), i + 1 < CommandLine.arguments.count {
             credit = CommandLine.arguments[i + 1]
+        }
+        if let i = CommandLine.arguments.firstIndex(of: "--credit-note"), i + 1 < CommandLine.arguments.count {
+            creditNote = CommandLine.arguments[i + 1]
         }
         print("Headlines in \(serif)")
         let mac = model.mac
@@ -145,29 +150,24 @@ enum DemoVideo {
         clips[.open] = await mac.recordClip(seconds: 3.6, intro: true, speed: 0.65)
 
         reset(base)
-        clips[.lid] = await mac.recordClip(seconds: 3.8) { t in
-            let angle = t < 0.4 ? 112 : t < 1.5 ? 112 - 77 * ease((t - 0.4) / 1.1) : t < 2.0 ? 35 : 35 + 77 * ease((t - 2.0) / 1.2)
+        clips[.lid] = await mac.recordClip(seconds: 3.2) { t in
+            let angle = t < 0.3 ? 112 : t < 1.3 ? 112 - 77 * ease((t - 0.3) / 1.0) : t < 1.6 ? 35 : 35 + 77 * ease((t - 1.6) / 1.0)
             mac.simulateLid(angle)
         }
 
+        // MagSafe goes in, then the monitors rise around it: power and desk in one beat.
         reset(base)
-        var plugged = false, cells = false
-        clips[.plug] = await mac.recordClip(seconds: 4.0) { t in
-            if t > 0.5 && !plugged { plugged = true; mac.update(charging) }
-            if t > 2.0 && !cells { cells = true; mac.setMode(.charging) }
+        var plugged = false, atDesk = false
+        clips[.plug] = await mac.recordClip(seconds: 4.4) { t in
+            if t > 0.4 && !plugged { plugged = true; mac.update(charging) }
+            if t > 1.8 && !atDesk { atDesk = true; mac.update(desk); mac.setMode(.desk) }
         }
 
         reset(desk)
         var leftSide = false, rightSide = false
-        clips[.ports] = await mac.recordClip(seconds: 5.2) { t in
+        clips[.ports] = await mac.recordClip(seconds: 4.8) { t in
             if !leftSide { leftSide = true; mac.setMode(.ports(.left)) }
             if t > 2.4 && !rightSide { rightSide = true; mac.setMode(.ports(.right)) }
-        }
-
-        reset(desk)
-        var atDesk = false
-        clips[.desk] = await mac.recordClip(seconds: 3.6) { t in
-            if t > 0.3 && !atDesk { atDesk = true; mac.setMode(.desk) }
         }
 
         // The screen and the status follow each alert as it arrives (times match `alerts`).
@@ -283,10 +283,10 @@ private struct DemoFrame: View {
 
     /// Where the 3D Mac sits.
     static let stage = CGRect(x: 60, y: 430, width: 960, height: 630)
-    static let productParts: [DemoVideo.Part] = [.open, .lid, .plug, .ports, .desk, .heat]
+    static let productParts: [DemoVideo.Part] = [.open, .lid, .plug, .ports, .heat]
     /// Parts that open on a hard cut: a white flash and a punch-in.
     /// The lid scene carries straight on from the opening (same shot), so it doesn't cut.
-    static let cuts: [DemoVideo.Part] = [.news, .open, .plug, .ports, .desk, .heat, .actions, .thesis, .end]
+    static let cuts: [DemoVideo.Part] = [.news, .open, .plug, .ports, .heat, .actions, .thesis, .end]
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -479,9 +479,8 @@ private struct DemoFrame: View {
         switch part {
         case .open: ("One answer", "One click. *One answer.*", "All good, or the one thing that isn't.")
         case .lid: ("Live", "It mirrors *your* Mac.", "Move the lid, and so does it.")
-        case .plug: ("Power", "Plug in. *It knows.*", "MagSafe, charge level, charger speed.")
+        case .plug: ("Power", "Plug in. *It knows.*", "Charger, monitors, the whole desk.")
         case .ports: ("Ports", "Every port, *labelled.*", "What's plugged in, and where.")
-        case .desk: ("Desk", "Your whole *desk.*", "Monitors appear as you connect them.")
         case .heat: ("Alerts", "Warns you *early.*", "Heat, memory, disk and battery.")
         case .actions: ("Actions", "One tap, *done.*", "Focus, keep awake, lock and more.")
         default: ("", "", "")
@@ -503,7 +502,7 @@ private struct DemoFrame: View {
 
     /// "03 / 07  PORTS", like a chapter card in a film.
     private var chapter: some View {
-        let steps: [DemoVideo.Part] = [.open, .lid, .plug, .ports, .desk, .heat, .actions]
+        let steps: [DemoVideo.Part] = [.open, .lid, .plug, .ports, .heat, .actions]
         let number = (steps.firstIndex(of: part) ?? 0) + 1
         return HStack(spacing: 22) {
             Text(String(format: "%02d", number)).foregroundStyle(.white)
@@ -694,7 +693,7 @@ private struct DemoFrame: View {
     /// iPad prices, blaming a memory chip shortage driven by AI; the 1 TB 14-inch MacBook Pro went
     /// from $1,699 to $1,999. The quote is Apple's written statement from that report.
     private var news: some View {
-        let split = 5.2
+        let split = 4.8
         let second = local > split
         let into = second ? local - split : local
         let leave = second ? leaving : clamp((into - (split - 0.25)) / 0.22)
@@ -729,7 +728,7 @@ private struct DemoFrame: View {
     private func clipping(into t: Double) -> some View {
         let drop = springy(t / 0.6)
         let angle: Double = -1.6 - 2.4 * (1 - drop)
-        let scale: CGFloat = 0.9 + 0.1 * drop + 0.02 * t / 5.2
+        let scale: CGFloat = 0.9 + 0.1 * drop + 0.02 * t / 4.8
         let lift: CGFloat = 40 + 60 * (1 - drop)
         return VStack(alignment: .leading, spacing: 0) {
             clippingMasthead
@@ -814,7 +813,7 @@ private struct DemoFrame: View {
             ("Nobody wants a dashboard.|*They want one sentence.*", 76.0),
             ("AI made building cheap.|*Deciding what to build* is the job.", 72.0),
         ]
-        let beat = 2.95
+        let beat = 2.8
         let i = min(Int(local / beat), lines.count - 1)
         let into = local - Double(i) * beat
         let leave = i == lines.count - 1 ? leaving : clamp((into - (beat - 0.25)) / 0.22)
@@ -863,6 +862,13 @@ private struct DemoFrame: View {
                     .foregroundStyle(.white)
                     .opacity(easeOut((local - 2.7) / 0.5))
                     .padding(.top, 90)
+            }
+            if let note = DemoVideo.creditNote {
+                Text(note)
+                    .font(.system(size: 24))
+                    .foregroundStyle(Color(white: 0.6))
+                    .opacity(easeOut((local - 3.0) / 0.5))
+                    .padding(.top, 10)
             }
             Text("RENDERED BY DESKBAR ITSELF")
                 .font(.system(size: 16, weight: .semibold)).tracking(5)
