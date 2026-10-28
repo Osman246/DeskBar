@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key><string>DeskBar</string>
+    <key>CFBundleIdentifier</key><string>local.deskbar</string>
+    <key>CFBundleName</key><string>DeskBar</string>
+    <key>CFBundleDisplayName</key><string>DeskBar</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>1.0</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>LSMinimumSystemVersion</key><string>15.0</string>
+    <key>LSUIElement</key><true/>
+    <key>NSLocationUsageDescription</key><string>macOS only shares your Wi-Fi network's name with apps that have Location access. DeskBar doesn't use your location.</string>
+    <key>NSLocationWhenInUseUsageDescription</key><string>macOS only shares your Wi-Fi network's name with apps that have Location access. DeskBar doesn't use your location.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key><string>DeskBar shows the battery levels of your connected Bluetooth devices.</string>
+</dict>
+</plist>

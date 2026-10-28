@@ -1,0 +1,12 @@
+.build/
+.swiftpm/
+DeskBar.app/
+*.xcodeproj/xcuserdata/
+.DS_Store
+
+# Apple's 3D MacBook Pro model is Apple's and isn't redistributed. DeskBar downloads it on request.
+Models/*.usdz
+
+# Local working files.
+previews/
+screenshots/
