@@ -13,11 +13,11 @@ import SwiftUI
 /// directory, and macOS's Hoefler Text otherwise.
 @MainActor
 enum DemoVideo {
-    enum Part: CaseIterable { case hook, news, menuBar, open, lid, plug, ports, desk, heat, actions, thesis, end }
+    enum Part: CaseIterable { case hook, menuBar, open, lid, plug, ports, desk, news, heat, actions, thesis, end }
 
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
-    static let lengths: [Part: Double] = [.hook: 3.0, .news: 10.0, .menuBar: 2.2, .open: 3.6, .lid: 3.8, .plug: 4.0,
+    static let lengths: [Part: Double] = [.hook: 3.0, .news: 8.0, .menuBar: 2.2, .open: 3.6, .lid: 3.8, .plug: 4.0,
                                           .ports: 5.2, .desk: 3.6, .heat: 6.6, .actions: 3.0, .thesis: 8.9, .end: 4.4]
     static var total: Double { lengths.values.reduce(0, +) }
     nonisolated(unsafe) static var serif = "Hoefler Text"   // set once before rendering
@@ -392,7 +392,7 @@ private struct DemoFrame: View {
 
     private var menuBarShown: Double {
         switch part {
-        case .hook, .news: 0
+        case .hook: 0
         case .menuBar: easeOut(local / 0.35)
         case .end: 1 - ease(local / 0.4)
         default: 1
@@ -404,7 +404,7 @@ private struct DemoFrame: View {
 
     private var panelOpen: Bool {
         switch part {
-        case .hook, .news, .end: false
+        case .hook, .end: false
         case .menuBar: local > 1.3
         default: true
         }
@@ -688,11 +688,13 @@ private struct DemoFrame: View {
 
     // MARK: Why it matters now
 
-    /// The news that makes it timely, set as a clipping, then what DeskBar does about it.
-    /// Reported by PBS NewsHour, 26 June 2026: Apple raised Mac and iPad prices, blaming a memory
-    /// chip shortage driven by AI. The quote is Apple's statement from that report.
+    /// Halfway through, the news that makes it timely (a change of pace that leads into the alerts),
+    /// set as a clipping, then what DeskBar does about it.
+    /// Reported by PBS NewsHour, 26 June 2026 (Apple announced it on the 25th): Apple raised Mac and
+    /// iPad prices, blaming a memory chip shortage driven by AI; the 1 TB 14-inch MacBook Pro went
+    /// from $1,699 to $1,999. The quote is Apple's written statement from that report.
     private var news: some View {
-        let split = 6.5
+        let split = 5.2
         let second = local > split
         let into = second ? local - split : local
         let leave = second ? leaving : clamp((into - (split - 0.25)) / 0.22)
@@ -727,7 +729,7 @@ private struct DemoFrame: View {
     private func clipping(into t: Double) -> some View {
         let drop = springy(t / 0.6)
         let angle: Double = -1.6 - 2.4 * (1 - drop)
-        let scale: CGFloat = 0.9 + 0.1 * drop + 0.02 * t / 6.5
+        let scale: CGFloat = 0.9 + 0.1 * drop + 0.02 * t / 5.2
         let lift: CGFloat = 40 + 60 * (1 - drop)
         return VStack(alignment: .leading, spacing: 0) {
             clippingMasthead
@@ -760,7 +762,7 @@ private struct DemoFrame: View {
             HStack {
                 Text("IN THE NEWS").tracking(5)
                 Spacer()
-                Text("26 JUNE 2026").tracking(3)
+                Text("JUNE 2026").tracking(3)
             }
             .font(.system(size: 22, weight: .bold))
             .foregroundStyle(Self.ink.opacity(0.65))
@@ -770,11 +772,11 @@ private struct DemoFrame: View {
     }
 
     private func priceRow(_ t: Double) -> some View {
-        let strike = easeOut((t - 1.7) / 0.4)
-        let shown = easeOut((t - 2.0) / 0.35)
+        let strike = easeOut((t - 1.0) / 0.35)
+        let shown = easeOut((t - 1.25) / 0.3)
         let red = Color(red: 0.75, green: 0.12, blue: 0.08)
         return HStack(spacing: 18) {
-            Text("MacBook Pro, 1 TB").font(.system(size: 28, weight: .medium)).foregroundStyle(Self.ink.opacity(0.7))
+            Text("14-inch MacBook Pro, 1 TB").font(.system(size: 28, weight: .medium)).foregroundStyle(Self.ink.opacity(0.7))
             Text("$1,699")
                 .font(.system(size: 30, weight: .medium))
                 .foregroundStyle(Self.ink.opacity(0.5))
@@ -790,7 +792,7 @@ private struct DemoFrame: View {
     }
 
     private func pullQuote(_ t: Double) -> some View {
-        let sweep = ease((t - 2.9) / 0.9)
+        let sweep = ease((t - 1.8) / 0.8)
         return Text("“We have never seen a component price increase this much, this quickly.”")
             .font(serif(44)).italic()
             .foregroundStyle(Self.ink)
