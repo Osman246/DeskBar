@@ -12,6 +12,10 @@ enum Snapshot {
         app.setActivationPolicy(.prohibited)
         Task { @MainActor in
             let model = AppModel(askForNotifications: false)
+            if CommandLine.arguments.contains("--demo-video") {
+                await DemoVideo.make(model: model, to: directory)
+                exit(0)
+            }
             model.stats.historyInterval = 2  // fill the graphs faster than once every 10 s
             try? await Task.sleep(for: .seconds(24))
             model.display.refresh()

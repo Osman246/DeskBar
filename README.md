@@ -101,6 +101,7 @@ is in [docs/PRODUCT.md](docs/PRODUCT.md#case-study-the-four-day-glitch).
 swift build                                              # debug build
 ./DeskBar.app/Contents/MacOS/DeskBar --snapshot out/     # renders the panel to PNGs, light and dark
 DESKBAR_DEMO=1 ./DeskBar.app/Contents/MacOS/DeskBar --snapshot docs/images   # shareable screenshots
+DESKBAR_DEMO=1 ./DeskBar.app/Contents/MacOS/DeskBar --snapshot out/ --demo-video   # the 42-second demo video
 ```
 
 `--snapshot` modes render the real views offscreen. That's how every screenshot here was made, and

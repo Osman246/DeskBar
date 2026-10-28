@@ -1122,6 +1122,31 @@ final class MacScene: ObservableObject {
         return frames
     }
 
+    /// One recorded frame for the demo video: the render plus what the card overlays on it.
+    struct ClipFrame {
+        var time: Double
+        var image: NSImage
+        var pills: [HeroPill]
+        var anchors: [String: CGPoint]
+    }
+
+    /// Records `seconds` of live animation for the demo video, calling `change` with the elapsed
+    /// time before each frame. With `intro`, the full opening plays first (snapshot mode only).
+    func recordClip(seconds: Double, scale: CGFloat = 3, intro: Bool = false,
+                    change: (Double) -> Void = { _ in }) async -> [ClipFrame] {
+        if intro { wokeSinceLastFull = true; beginIntro() }
+        var frames: [ClipFrame] = []
+        let start = Date()
+        last = start
+        while case let t = Date().timeIntervalSince(start), t <= seconds {
+            change(t)
+            tick()
+            if let image = still(scale: scale) { frames.append(ClipFrame(time: t, image: image, pills: pills, anchors: portAnchors)) }
+            try? await Task.sleep(for: .milliseconds(4))
+        }
+        return frames
+    }
+
     /// Records a Left → Right ports move as frames (snapshot mode only).
     func recordSideSwitch() async -> [NSImage] {
         setMode(.ports(.left))
