@@ -2,21 +2,21 @@ import AVFoundation
 import CoreText
 import SwiftUI
 
-/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 42-second
-/// launch video (1080 × 1350, 30 fps) from the real 3D Mac, recorded live, and the panel screenshot
-/// in docs/images. Everything else (captions, menu bar, cursor) is drawn here, cut like a short
-/// cinematic edit: black, film grain, serif headlines.
+/// `DESKBAR_DEMO=1 DeskBar --snapshot <dir> --demo-video [--fonts <dir>]` renders a 31-second
+/// launch video (1080 × 1350, 30 fps) from the real 3D Mac, recorded live. Everything else
+/// (captions, menu bar, cursor) is drawn here, cut like a short cinematic edit: black, film grain,
+/// serif headlines. The first frame already reads, since feeds autoplay muted.
 ///
 /// The headlines use EB Garamond (SIL Open Font License) when its .ttf files are in the `--fonts`
 /// directory, and macOS's Hoefler Text otherwise.
 @MainActor
 enum DemoVideo {
-    enum Part: CaseIterable { case hook, menuBar, open, panel, lid, plug, ports, desk, heat, actions, end }
+    enum Part: CaseIterable { case hook, menuBar, open, lid, plug, ports, desk, heat, actions, end }
 
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
-    static let lengths: [Part: Double] = [.hook: 3.4, .menuBar: 2.0, .open: 3.6, .panel: 5.0, .lid: 3.8, .plug: 4.0,
-                                          .ports: 5.4, .desk: 3.6, .heat: 3.4, .actions: 3.4, .end: 4.8]
+    static let lengths: [Part: Double] = [.hook: 2.6, .menuBar: 1.7, .open: 3.0, .lid: 3.2, .plug: 3.4,
+                                          .ports: 4.8, .desk: 3.0, .heat: 3.0, .actions: 2.6, .end: 4.0]
     static var total: Double { lengths.values.reduce(0, +) }
     nonisolated(unsafe) static var serif = "Hoefler Text"   // set once before rendering
 
@@ -44,7 +44,6 @@ enum DemoVideo {
         let mac = model.mac
         await mac.waitUntilLoaded()
         let clips = await record(mac)
-        let panel = NSImage(contentsOfFile: FileManager.default.currentDirectoryPath + "/docs/images/panel-dark.png")
         let grain = (0..<4).compactMap { _ in Self.grain() }
 
         let url = URL(fileURLWithPath: directory).appendingPathComponent("deskbar-demo.mp4")
@@ -66,10 +65,10 @@ enum DemoVideo {
         writer.startSession(atSourceTime: .zero)
 
         let frames = Int(total * fps)
-        let stills = Set(stride(from: 0.6, to: total, by: 1.5).map { Int($0 * fps) })
+        let stills = Set(stride(from: 0.0, to: total, by: 1.2).map { Int($0 * fps) })
         for index in 0..<frames {
             let t = Double(index) / fps
-            let view = DemoFrame(t: t, clips: clips, panel: panel, grain: grain.isEmpty ? nil : grain[index % grain.count])
+            let view = DemoFrame(t: t, clips: clips, grain: grain.isEmpty ? nil : grain[index % grain.count])
                 .frame(width: size.width, height: size.height)
                 .environment(\.colorScheme, .dark)
             let renderer = ImageRenderer(content: view)
@@ -148,37 +147,37 @@ enum DemoVideo {
         }
 
         reset(base)
-        clips[.open] = await mac.recordClip(seconds: 3.6, intro: true)
+        clips[.open] = await mac.recordClip(seconds: 3.0, intro: true)
 
         reset(base)
-        clips[.lid] = await mac.recordClip(seconds: 3.8) { t in
-            let angle = t < 0.5 ? 112 : t < 1.7 ? 112 - 77 * ease((t - 0.5) / 1.2) : t < 2.2 ? 35 : 35 + 77 * ease((t - 2.2) / 1.2)
+        clips[.lid] = await mac.recordClip(seconds: 3.2) { t in
+            let angle = t < 0.3 ? 112 : t < 1.3 ? 112 - 77 * ease((t - 0.3) / 1.0) : t < 1.6 ? 35 : 35 + 77 * ease((t - 1.6) / 1.1)
             mac.simulateLid(angle)
         }
 
         reset(base)
         var plugged = false, cells = false
-        clips[.plug] = await mac.recordClip(seconds: 4.0) { t in
-            if t > 0.5 && !plugged { plugged = true; mac.update(charging) }
-            if t > 2.0 && !cells { cells = true; mac.setMode(.charging) }
+        clips[.plug] = await mac.recordClip(seconds: 3.4) { t in
+            if t > 0.4 && !plugged { plugged = true; mac.update(charging) }
+            if t > 1.7 && !cells { cells = true; mac.setMode(.charging) }
         }
 
         reset(desk)
         var leftSide = false, rightSide = false
-        clips[.ports] = await mac.recordClip(seconds: 5.4) { t in
+        clips[.ports] = await mac.recordClip(seconds: 4.8) { t in
             if !leftSide { leftSide = true; mac.setMode(.ports(.left)) }
-            if t > 2.4 && !rightSide { rightSide = true; mac.setMode(.ports(.right)) }
+            if t > 2.2 && !rightSide { rightSide = true; mac.setMode(.ports(.right)) }
         }
 
         reset(desk)
         var atDesk = false
-        clips[.desk] = await mac.recordClip(seconds: 3.6) { t in
+        clips[.desk] = await mac.recordClip(seconds: 3.0) { t in
             if t > 0.3 && !atDesk { atDesk = true; mac.setMode(.desk) }
         }
 
         reset(hot)
         var heated = false
-        clips[.heat] = await mac.recordClip(seconds: 3.4) { _ in
+        clips[.heat] = await mac.recordClip(seconds: 3.0) { _ in
             if !heated { heated = true; mac.setMode(.heat) }
         }
         reset(base)
@@ -269,7 +268,6 @@ private struct Kicker: View {
 private struct DemoFrame: View {
     let t: Double
     let clips: [DemoVideo.Part: [MacScene.ClipFrame]]
-    let panel: NSImage?
     let grain: CGImage?
 
     private var current: (DemoVideo.Part, Double) { DemoVideo.part(at: t) }
@@ -282,7 +280,7 @@ private struct DemoFrame: View {
     static let stage = CGRect(x: 60, y: 430, width: 960, height: 630)
     static let productParts: [DemoVideo.Part] = [.open, .lid, .plug, .ports, .desk, .heat]
     /// Parts that open on a hard cut: a white flash and a punch-in.
-    static let cuts: [DemoVideo.Part] = [.open, .panel, .lid, .plug, .ports, .desk, .heat, .actions, .end]
+    static let cuts: [DemoVideo.Part] = [.open, .lid, .plug, .ports, .desk, .heat, .actions, .end]
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -291,7 +289,6 @@ private struct DemoFrame: View {
                 switch part {
                 case .hook: hook
                 case .menuBar: introducing
-                case .panel: panelTour
                 case .actions: actions
                 case .end: endCard
                 default: EmptyView()
@@ -336,28 +333,43 @@ private struct DemoFrame: View {
 
     // MARK: Hook
 
+    /// Readable from the very first frame (feeds autoplay muted): the question over the Mac, then a
+    /// quick montage of the places you'd check today.
     private var hook: some View {
         let places = ["Activity Monitor.", "System Settings.", "Control Centre.", "The battery menu."]
-        let montage = local - 1.45
-        return ZStack {
+        let montage = local - 1.0
+        return ZStack(alignment: .topLeading) {
             if montage < 0 {
-                Headline(text: "Is your Mac|*okay?*", size: 124, time: local - 0.1, leave: clamp((local - 1.25) / 0.2))
+                if let mac = clips[.lid]?.first {
+                    Image(nsImage: mac.image).resizable()
+                        .frame(width: Self.stage.width, height: Self.stage.height)
+                        .scaleEffect(1.3 + 0.04 * local)
+                        .offset(x: Self.stage.minX, y: Self.stage.minY + 40)
+                }
+                Text("Is your Mac OK?")
+                    .font(serif(112))
+                    .tracking(-1.5)
+                    .foregroundStyle(.white)
+                    .frame(width: DemoVideo.size.width)
+                    .offset(y: 170)
             } else {
-                let i = min(Int(montage / 0.42), places.count - 1)
-                let into = montage - Double(i) * 0.42
+                let step = 0.38
+                let i = min(Int(montage / step), places.count - 1)
+                let into = montage - Double(i) * step
                 VStack(spacing: 26) {
-                    Kicker(text: "Today you'd check", time: montage)
+                    Kicker(text: "Today you'd check", time: 1)
                     Text(places[i])
                         .font(serif(92))
                         .italic()
                         .foregroundStyle(.white)
                         .scaleEffect(1.08 - 0.08 * easeOut(into / 0.3))
-                        .opacity(montage > 1.75 ? 1 - clamp((montage - 1.75) / 0.15) : 1)
                 }
-                Color.white.opacity(0.18 * (1 - clamp(into / 0.08)))   // a flash on every word
+                .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
+                .opacity(1 - clamp((montage - 1.45) / 0.15))
+                Color.white.opacity(0.22 * (1 - clamp(into / 0.08)))   // a flash on every word
             }
         }
-        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
     }
 
     // MARK: Menu bar and cursor
@@ -389,7 +401,7 @@ private struct DemoFrame: View {
     private var panelOpen: Bool {
         switch part {
         case .hook, .end: false
-        case .menuBar: local > 1.35
+        case .menuBar: local > 1.1
         default: true
         }
     }
@@ -426,7 +438,7 @@ private struct DemoFrame: View {
         let start = CGPoint(x: 540, y: 1000), end = Self.itemCentre
         switch part {
         case .menuBar:
-            let p = ease((local - 0.45) / 0.8)
+            let p = ease((local - 0.3) / 0.7)
             return CGPoint(x: start.x + (end.x - start.x) * p + 10, y: start.y + (end.y - start.y) * p + 6)
         case .open where local < 0.6:
             return CGPoint(x: end.x + 10, y: end.y + 6)
@@ -436,7 +448,7 @@ private struct DemoFrame: View {
 
     @ViewBuilder private var cursor: some View {
         if let point = cursorPoint {
-            let click = part == .menuBar ? clamp((local - 1.3) / 0.45) : 1
+            let click = part == .menuBar ? clamp((local - 1.05) / 0.45) : 1
             ZStack(alignment: .topLeading) {
                 if click > 0 && click < 1 {
                     Circle()
@@ -541,13 +553,13 @@ private struct DemoFrame: View {
             }
             .frame(width: DemoVideo.size.width)
             .offset(y: Self.stage.maxY + 22)
-            .opacity((part == .open ? easeOut((local - 2.2) / 0.5) : easeOut(local / 0.3)) * (1 - leaving))
+            .opacity((part == .open ? easeOut((local - 1.8) / 0.4) : easeOut(local / 0.3)) * (1 - leaving))
         }
     }
 
     /// Rings on the ports and labels below, arriving one after another once the camera settles.
     private func portLabels(_ now: MacScene.ClipFrame) -> some View {
-        let side: Ports.Side = local < 2.4 ? .left : .right
+        let side: Ports.Side = local < 2.2 ? .left : .right
         let ports = DemoVideo.ports(DemoVideo.shownPorts).filter { $0.side == side && now.anchors[$0.id] != nil }
         // How long the anchors have been showing.
         let since = clip.reversed().drop { $0.time > local }.prefix { !$0.anchors.isEmpty }.last.map { local - $0.time } ?? 0
@@ -611,63 +623,17 @@ private struct DemoFrame: View {
         .opacity(clamp(p * 1.5) * (1 - leaving))
     }
 
-    // MARK: Panel tour
-
-    private var panelTour: some View {
-        let height: CGFloat = 980, width: CGFloat = 680 * height / 1746
-        let rise = springy(local / 0.6)
-        // Section centres in the 680 × 1746 screenshot.
-        let callouts: [(CGFloat, String, String)] = [
-            (230, "A living 3D Mac", "and one health verdict"),
-            (540, "CPU, heat & fans", "per core, with history"),
-            (720, "Memory, disk, battery", "plus Wi-Fi and latency"),
-            (1085, "Network, sound, display", "speed test, devices, alerts"),
-            (1445, "Quick actions", "one tap, no digging"),
-        ]
-        let left: CGFloat = 80, top: CGFloat = 300
-        return ZStack(alignment: .topLeading) {
-            VStack(alignment: .leading, spacing: 10) {
-                Kicker(text: "The whole panel", time: local)
-                Headline(text: "Everything, *at a glance.*", size: 70, time: local - 0.1, leave: leaving, alignment: .leading)
-            }
-            .offset(x: 80, y: 120)
-            if let panel {
-                Image(nsImage: panel).resizable()
-                    .frame(width: width, height: height)
-                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-                    .shadow(color: .white.opacity(0.06), radius: 30)
-                    .offset(x: left, y: top + 160 * (1 - rise))
-                    .opacity(clamp(rise * 1.4) * (1 - leaving))
-            }
-            ForEach(Array(callouts.enumerated()), id: \.offset) { i, callout in
-                let y = top + callout.0 * height / 1746
-                let p = easeOut((local - 0.7 - Double(i) * 0.45) / 0.4)
-                ZStack(alignment: .topLeading) {
-                    Rectangle().fill(Color.white.opacity(0.5)).frame(width: 80 * p, height: 1.5).offset(x: left + width + 24, y: y)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(callout.1).font(serif(40)).foregroundStyle(.white)
-                        Text(callout.2).font(serif(28)).italic().foregroundStyle(Color(white: 0.55))
-                    }
-                    .fixedSize()
-                    .offset(x: left + width + 124 + 20 * (1 - p), y: y - 30)
-                }
-                .blur(radius: 10 * (1 - p))
-                .opacity(p * (1 - leaving))
-            }
-        }
-    }
-
     // MARK: Quick actions
 
     private var actions: some View {
         let items: [(String, String)] = [("Focus", "moon.fill"), ("Awake", "cup.and.saucer.fill"), ("Hide desk", "eye.slash.fill"),
                                          ("Mute mic", "mic.slash.fill"), ("Display off", "display"), ("Capture", "camera.viewfinder"),
                                          ("Clean up", "arrow.down.circle"), ("Lock", "lock.fill")]
-        let focusOn = local > 1.7
-        let tap = clamp((local - 1.55) / 0.35)
+        let focusOn = local > 1.35
+        let tap = clamp((local - 1.2) / 0.35)
         return ZStack(alignment: .topLeading) {
             ForEach(Array(items.enumerated()), id: \.offset) { i, item in
-                let p = springy((local - 0.25 - Double(i) * 0.07) / 0.45)
+                let p = springy((local - 0.15 - Double(i) * 0.05) / 0.4)
                 let on = i == 0 && focusOn
                 VStack(spacing: 18) {
                     Circle()
@@ -688,7 +654,7 @@ private struct DemoFrame: View {
                 .foregroundStyle(Color(white: 0.7))
                 .frame(width: DemoVideo.size.width)
                 .offset(y: 1090)
-                .opacity(easeOut((local - 1.8) / 0.3) * (1 - leaving))
+                .opacity(easeOut((local - 1.45) / 0.3) * (1 - leaving))
         }
     }
 
@@ -696,35 +662,37 @@ private struct DemoFrame: View {
 
     private var endCard: some View {
         VStack(spacing: 0) {
-            Headline(text: "DeskBar.", size: 170, time: local - 0.15)
+            Headline(text: "DeskBar.", size: 160, time: local - 0.1)
             Text("Your Mac, at a glance.")
-                .font(serif(50)).italic()
+                .font(serif(46)).italic()
                 .foregroundStyle(Color(white: 0.65))
-                .blur(radius: 10 * (1 - easeOut((local - 0.6) / 0.5)))
-                .opacity(easeOut((local - 0.6) / 0.5))
-                .padding(.top, 8)
+                .blur(radius: 10 * (1 - easeOut((local - 0.45) / 0.45)))
+                .opacity(easeOut((local - 0.45) / 0.45))
+                .padding(.top, 6)
             Text("FREE  ·  OPEN SOURCE  ·  PRIVATE BY DESIGN")
-                .font(serif(24, .medium)).tracking(6)
+                .font(serif(23, .medium)).tracking(6)
                 .foregroundStyle(Color(white: 0.55))
-                .opacity(easeOut((local - 1.2) / 0.5))
-                .padding(.top, 54)
-            HStack(spacing: 14) {
-                Text("Link in the comments").italic()
-                Image(systemName: "arrow.down").font(.system(size: 30, weight: .light))
-                    .offset(y: 7 * sin(max(0, local - 1.9) * 6))
+                .opacity(easeOut((local - 0.9) / 0.45))
+                .padding(.top, 44)
+            Headline(text: "What should it|show *next?*", size: 76, time: local - 1.4)
+                .padding(.top, 120)
+            HStack(spacing: 12) {
+                Text("Tell me in the comments. The link's there too.").italic()
+                Image(systemName: "arrow.down").font(.system(size: 26, weight: .light))
+                    .offset(y: 6 * sin(max(0, local - 2.3) * 6))
             }
-            .font(serif(46))
-            .foregroundStyle(.white)
-            .opacity(easeOut((local - 1.9) / 0.4))
-            .padding(.top, 120)
+            .font(serif(34))
+            .foregroundStyle(Color(white: 0.7))
+            .opacity(easeOut((local - 2.3) / 0.4))
+            .padding(.top, 40)
             Text("RENDERED BY DESKBAR ITSELF")
                 .font(serif(19, .medium)).tracking(6)
                 .foregroundStyle(Color(white: 0.38))
-                .opacity(easeOut((local - 2.6) / 0.5))
-                .padding(.top, 150)
+                .opacity(easeOut((local - 2.8) / 0.5))
+                .padding(.top, 110)
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
-        .offset(y: 60)
+        .offset(y: 40)
     }
 }
 
