@@ -50,7 +50,7 @@ DeskBar is a Swift package with no dependencies. You need **macOS 15 or later on
 was built and tested on macOS 26 with an M4 MacBook Pro.
 
 ```bash
-git clone https://github.com/<you>/DeskBar.git
+git clone https://github.com/Osman246/DeskBar.git
 cd DeskBar
 ./build.sh
 open DeskBar.app
