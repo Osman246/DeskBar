@@ -46,8 +46,23 @@ approach:
 
 ## Install
 
-DeskBar is a Swift package with no dependencies. You need **macOS 15 or later on Apple silicon**. It
-was built and tested on macOS 26 with an M4 MacBook Pro.
+You need **macOS 15 or later on Apple silicon**. It was built and tested on macOS 26 with an M4
+MacBook Pro.
+
+### Download
+
+1. Download `DeskBar-1.0-macOS-AppleSilicon.zip` from the
+   [latest release](https://github.com/Osman246/DeskBar/releases/latest) and unzip it.
+2. Drag **DeskBar.app** into **Applications**.
+3. Open it. DeskBar isn't notarised by Apple yet, so the first time macOS will say it can't check it.
+   Click **Done**, then go to **System Settings → Privacy & Security** and click **Open Anyway** next
+   to DeskBar. You only need to do this once.
+
+DeskBar appears in your menu bar. It has no Dock icon until you open its window.
+
+### Build it yourself
+
+DeskBar is a Swift package with no dependencies.
 
 ```bash
 git clone https://github.com/Osman246/DeskBar.git
