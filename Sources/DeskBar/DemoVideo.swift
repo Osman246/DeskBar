@@ -408,7 +408,9 @@ struct DemoFrame: View {
                 .offset(y: 300)
                 .opacity(1 - gone)
             ForEach(Array(Self.places.enumerated()), id: \.offset) { i, place in
-                genie(placeWindow(place.name, place.symbol, pop: springy((t - 0.1 - Double(i) * 0.22) / 0.35)),
+                // Already settled at frame 0 (it's the feed thumbnail), drifting slightly so it's alive.
+                genie(placeWindow(place.name, place.symbol, pop: 1)
+                        .offset(y: 6 * sin(t * 2.2 + Double(i) * 1.3)),
                       from: place.centre, angle: place.angle, progress: clamp((t - starts[i]) / 0.55))
             }
             // The menu bar item answers each one as it lands.
@@ -606,8 +608,31 @@ struct DemoFrame: View {
         let stage = Self.stage
         let now = frame(at: clipTime)
         let push = 1 + 0.045 * local / length   // slow push-in through the shot
+        // Ports: the camera pans round, the left side sliding out as the right side glides in.
+        let turn = part == .ports ? ease((local - (Self.portsSwitch - 0.35)) / 0.7) : 0
+        let leftShot = clips[.ports].flatMap { c in c.last { $0.time <= Self.portsSwitch - 0.35 + Self.portsLead } }
+        let rightShot = clips[.portsRight].flatMap { c in c.last { $0.time <= Self.portsLead + 0.35 } ?? c.first }
         return ZStack(alignment: .topLeading) {
-            if let now {
+            if turn > 0 && turn < 1, let leftShot, let rightShot {
+                ZStack(alignment: .topLeading) {
+                    Image(nsImage: leftShot.image).resizable()
+                        .frame(width: stage.width, height: stage.height)
+                        .scaleEffect(1 - 0.06 * turn)
+                        .offset(x: -stage.width * 0.55 * turn)
+                        .opacity(1 - turn)
+                    Image(nsImage: rightShot.image).resizable()
+                        .frame(width: stage.width, height: stage.height)
+                        .scaleEffect(0.94 + 0.06 * turn)
+                        .offset(x: stage.width * 0.55 * (1 - turn))
+                        .opacity(turn)
+                }
+                .frame(width: stage.width, height: stage.height, alignment: .topLeading)
+                .mask {
+                    LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.12),
+                                           .init(color: .black, location: 0.88), .init(color: .clear, location: 1)],
+                                   startPoint: .leading, endPoint: .trailing)
+                }
+            } else if let now {
                 Image(nsImage: now.image).resizable()
                     .frame(width: stage.width, height: stage.height)
                 if part == .ports { portLabels(now) }
