@@ -16,7 +16,7 @@ import SwiftUI
 @MainActor
 enum DemoVideo {
     /// `open` is only a recording (the 3D Mac's opening, shown under the brand card).
-    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open, portsRight }
+    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open }
 
     static let sequence: [Part] = [.hook, .dashboard, .lid, .plug, .ports, .news, .heat, .outcome, .thesis, .brand, .cta]
     static let size = CGSize(width: 1080, height: 1350)
@@ -193,17 +193,12 @@ enum DemoVideo {
             if t > 1.2 && !atDesk { atDesk = true; mac.update(desk); mac.setMode(.desk) }
         }
 
-        // Each side recorded on its own; the video starts each once the camera has nearly arrived and
-        // cuts between them, instead of swinging round the Mac.
+        // The app's own side switch: the camera swings round the Mac from the left side to the right.
         reset(desk)
-        var leftSide = false
-        clips[.ports] = await mac.recordClip(seconds: 3.2) { _ in
+        var leftSide = false, rightSide = false
+        clips[.ports] = await mac.recordClip(seconds: 4.0) { t in
             if !leftSide { leftSide = true; mac.setMode(.ports(.left)) }
-        }
-        reset(desk)
-        var rightSide = false
-        clips[.portsRight] = await mac.recordClip(seconds: 3.2) { _ in
-            if !rightSide { rightSide = true; mac.setMode(.ports(.right)) }
+            if t > 1.9 && !rightSide { rightSide = true; mac.setMode(.ports(.right)) }
         }
 
         // The screen and the status follow each alert as it arrives (times match `alerts`).
@@ -590,15 +585,10 @@ struct DemoFrame: View {
 
     // MARK: The 3D Mac
 
-    /// The ports scene shows the left side, then cuts to the right, each from just before it settles.
-    private static let portsSwitch = 2.0, portsLead = 0.95
-    private var clip: [MacScene.ClipFrame] {
-        part == .ports && local >= Self.portsSwitch ? clips[.portsRight] ?? [] : clips[part] ?? []
-    }
-    /// Where in its recording the current shot is.
-    private var clipTime: Double {
-        part == .ports ? (local >= Self.portsSwitch ? local - Self.portsSwitch : local) + Self.portsLead : local
-    }
+    /// When the ports scene switches from the left side to the right.
+    private static let portsSwitch = 1.9
+    private var clip: [MacScene.ClipFrame] { clips[part] ?? [] }
+    private var clipTime: Double { local }
 
     private func frame(at time: Double) -> MacScene.ClipFrame? {
         clip.last { $0.time <= time } ?? clip.first
@@ -608,31 +598,8 @@ struct DemoFrame: View {
         let stage = Self.stage
         let now = frame(at: clipTime)
         let push = 1 + 0.045 * local / length   // slow push-in through the shot
-        // Ports: the camera pans round, the left side sliding out as the right side glides in.
-        let turn = part == .ports ? ease((local - (Self.portsSwitch - 0.35)) / 0.7) : 0
-        let leftShot = clips[.ports].flatMap { c in c.last { $0.time <= Self.portsSwitch - 0.35 + Self.portsLead } }
-        let rightShot = clips[.portsRight].flatMap { c in c.last { $0.time <= Self.portsLead + 0.35 } ?? c.first }
         return ZStack(alignment: .topLeading) {
-            if turn > 0 && turn < 1, let leftShot, let rightShot {
-                ZStack(alignment: .topLeading) {
-                    Image(nsImage: leftShot.image).resizable()
-                        .frame(width: stage.width, height: stage.height)
-                        .scaleEffect(1 - 0.06 * turn)
-                        .offset(x: -stage.width * 0.55 * turn)
-                        .opacity(1 - turn)
-                    Image(nsImage: rightShot.image).resizable()
-                        .frame(width: stage.width, height: stage.height)
-                        .scaleEffect(0.94 + 0.06 * turn)
-                        .offset(x: stage.width * 0.55 * (1 - turn))
-                        .opacity(turn)
-                }
-                .frame(width: stage.width, height: stage.height, alignment: .topLeading)
-                .mask {
-                    LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.12),
-                                           .init(color: .black, location: 0.88), .init(color: .clear, location: 1)],
-                                   startPoint: .leading, endPoint: .trailing)
-                }
-            } else if let now {
+            if let now {
                 Image(nsImage: now.image).resizable()
                     .frame(width: stage.width, height: stage.height)
                 if part == .ports { portLabels(now) }
