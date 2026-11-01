@@ -3,13 +3,15 @@ import SwiftUI
 /// A rounded Control Center-style group.
 struct Module<Content: View>: View {
     var selected = false
+    /// Unboxed: sits straight on the panel, padded to its 16-pt margins.
+    var plain = false
     @ViewBuilder let content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) { content }
-            .padding(10)
+            .padding(.horizontal, plain ? 16 : 10).padding(.vertical, plain ? 6 : 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 11).fill(Color.primary.opacity(0.06)))
+            .background(RoundedRectangle(cornerRadius: 11).fill(Color.primary.opacity(plain ? 0 : 0.06)))
             .overlay(RoundedRectangle(cornerRadius: 11)
                 .strokeBorder(selected ? Color.accentColor.opacity(0.6) : .clear, lineWidth: 1))
             .contentShape(RoundedRectangle(cornerRadius: 11))

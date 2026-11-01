@@ -17,12 +17,11 @@ struct MacHero: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            if compact { RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.07)) }
             if let still = Self.stillImage {
-                Image(nsImage: still).resizable()
+                Image(nsImage: still).resizable().scaleEffect(restZoom)
             } else {
                 // Always present: its window-visibility watcher is what loads and starts the scene.
-                MacSceneView(mac: mac)
+                MacSceneView(mac: mac).scaleEffect(restZoom)
                 if mac.modelMissing {
                     if compact {
                         Image(systemName: "macbook").font(.system(size: 30, weight: .ultraLight))
@@ -43,9 +42,9 @@ struct MacHero: View {
                 fullOverlays
             }
         }
-        .frame(width: compact ? VerdictCard.compactSize.width : MacScene.panelSize.width,
-               height: compact ? VerdictCard.compactSize.height : MacScene.panelSize.height)
-        .clipShape(RoundedRectangle(cornerRadius: compact ? 10 : 14))
+        .frame(width: compact ? Stage.macSize.width : MacScene.panelSize.width,
+               height: compact ? Stage.macSize.height : MacScene.panelSize.height)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .animation(.easeInOut(duration: 0.35), value: mac.mode)
         .onAppear { push() }   // rendering starts and stops with the panel's real visibility
         .onDisappear { mac.stop() }
@@ -117,6 +116,11 @@ struct MacHero: View {
             .cascade(1, mac.revealed)
         }
     }
+
+    /// At rest the laptop fills only the middle ~52% × 59% of the scene's frame (room for the
+    /// ports and desk views), so the small stage zooms in 1.5× to give it presence. That keeps
+    /// ~10% clear at the sides and ~5% top and bottom; other views keep the full framing.
+    private var restZoom: CGFloat { compact && mac.mode == .rest && !mac.modelMissing ? 1.5 : 1 }
 
     private func push() { mac.update(Self.state(stats: stats, warning: warning ? status : nil)) }
 

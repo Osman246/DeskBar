@@ -30,19 +30,8 @@ enum Shell {
 /// The one-click buttons. Toggles keep their state; one-shot actions report a message.
 @MainActor
 final class Actions: ObservableObject {
-    /// What the last action did; clears itself after a few seconds so the panel shrinks back.
-    @Published var message = "" {
-        didSet {
-            guard !message.isEmpty else { return }
-            clearMessage?.cancel()
-            clearMessage = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(4))
-                guard !Task.isCancelled else { return }
-                self?.message = ""
-            }
-        }
-    }
-    private var clearMessage: Task<Void, Never>?
+    /// What the last action did, until the next one (nothing on screen disappears on a timer).
+    @Published var message = ""
     @Published var focusOn = UserDefaults.standard.bool(forKey: "focusOn")
     @Published var stayAwake = false
     @Published var desktopHidden = Actions.finderHidesDesktop

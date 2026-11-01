@@ -106,8 +106,8 @@ struct MenuBarLabel: View {
 
     @ViewBuilder private var label: some View {
         if let problem = stats.problems.first {
-            // Only when something needs you: an orange dot and what it is.
-            Image(nsImage: MenuBarDot.warning)
+            // Only when something needs you: the symbol changes shape (menu bar icons are monochrome) and names it.
+            Image(systemName: "exclamationmark.triangle")
             Text(problem.word)
         } else if let temp = stats.cpuTemp {
             Image(systemName: temp >= 85 ? "thermometer.high" : "thermometer.medium")
@@ -168,22 +168,29 @@ struct Panel: View {
     }
 
     private var content: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            VerdictCard(model: model, stats: stats, mac: mac, open: $open, macExpanded: $macExpanded)
+        // One surface: groups are divided by hairlines, not boxed, so the panel's material shows through.
+        VStack(alignment: .leading, spacing: 0) {
+            Stage(model: model, stats: stats, mac: mac, open: $open, macExpanded: $macExpanded)
             // During the opening the panel is just the Mac; afterwards each part drops into place.
             if shown >= 1 {
-                VitalsCard(stats: stats, open: $open).transition(.dropIn)
-                tileDetail
+                SectionRule()
+                VitalsRow(stats: stats, open: $open).transition(.dropIn)
+                tileDetail.padding(.horizontal, 10).padding(.bottom, 8)
             }
-            if shown >= 3 { Sections(model: model, open: $open).transition(.dropIn) }
-            if shown >= 4 { actionGrid.transition(.dropIn) }
-            if shown >= 5 && open == "Settings" { SettingsModule(model: model, openAtLogin: $openAtLogin).transition(.dropIn) }
-            if shown >= 6 {
-                OpenWindowRow { openDashboard() }.transition(.dropIn)
-                footer.transition(.dropIn)
+            if shown >= 2 {
+                SectionRule()
+                TodayLog(stats: stats).transition(.dropIn)
             }
+            if shown >= 3 {
+                SectionRule()
+                Sections(model: model, open: $open).transition(.dropIn)
+            }
+            if shown >= 4 { actionRow.transition(.dropIn) }
+            if shown >= 5 && open == "Settings" {
+                SettingsModule(model: model, openAtLogin: $openAtLogin).padding(.horizontal, 10).padding(.bottom, 8).transition(.dropIn)
+            }
+            if shown >= 6 { footer.transition(.dropIn) }
         }
-        .padding(10)
         .frame(width: 340)
         .onChange(of: mac.revealed) { _, revealed in
             if revealed { dropIn() } else { shown = 0 }
@@ -235,57 +242,75 @@ struct Panel: View {
 
     // MARK: Actions and footer
 
-    private var actionGrid: some View {
-        Module {
-            HStack(spacing: 0) {
-                RoundToggle("Focus", "moon.fill", on: actions.focusOn) { Task { await actions.toggleFocus() } }
-                RoundToggle("Awake", "cup.and.saucer.fill", on: actions.stayAwake) { actions.toggleStayAwake() }
-                RoundToggle("Mute mic", "mic.slash.fill", on: actions.micMuted) { actions.toggleMic() }
-                RoundToggle("Lock", "lock.fill") { actions.lockScreen() }
-                RoundToggle(moreActions ? "Less" : "More", moreActions ? "chevron.up" : "ellipsis", on: false) {
-                    withAnimation(.easeOut(duration: 0.2)) { moreActions.toggle() }
-                }
+    /// Four labelled actions (icons alone are ambiguous), Liquid Glass on macOS 26; the active one is tinted.
+    private var actionRow: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 6) {
+                action("Focus", "moon", on: actions.focusOn) { Task { await actions.toggleFocus() } }
+                action("Awake", "cup.and.saucer", on: actions.stayAwake) { actions.toggleStayAwake() }
+                action("Mute", "mic.slash", on: actions.micMuted) { actions.toggleMic() }
+                action("Lock", "lock") { actions.lockScreen() }
             }
             if moreActions {
-                HStack(spacing: 0) {
-                    RoundToggle("Hide desk", "eye.slash.fill", on: actions.desktopHidden) { Task { await actions.toggleDesktop() } }
-                    RoundToggle("Display off", "display") { actions.sleepDisplays() }
-                    RoundToggle("Capture", "camera.viewfinder") { actions.screenshot() }
-                    RoundToggle("Clean up", "arrow.down.circle") { actions.cleanUpDownloads() }
-                    Color.clear.frame(maxWidth: .infinity)
+                HStack(spacing: 6) {
+                    action("Hide desk", "eye.slash", on: actions.desktopHidden) { Task { await actions.toggleDesktop() } }
+                    action("Screen off", "display") { actions.sleepDisplays() }
+                    action("Capture", "camera.viewfinder") { actions.screenshot() }
+                    action("Clean up", "arrow.down.circle") { actions.cleanUpDownloads() }
                 }
-                .padding(.top, 10)
             }
-            // Only after an action, to say what it did.
+            // What the last action did. It stays until the next one rather than vanishing on a timer.
             if !actions.message.isEmpty {
                 Text(actions.message)
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 8)
+                    .foregroundStyle(Color.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 12)
     }
 
+    private func action(_ title: String, _ icon: String, on: Bool = false, run: @escaping () -> Void) -> some View {
+        GlassButton(title: title, icon: on ? icon + ".fill" : icon, prominent: on, fills: true, action: run)
+            .accessibilityValue(on ? "On" : "Off")
+    }
+
+    /// One quiet line, like the bottom of a menu, with the standard Mac shortcuts.
     private var footer: some View {
-        HStack {
-            Button {
-                withAnimation(.easeOut(duration: 0.2)) { open = open == "Settings" ? "" : "Settings" }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "gearshape")
-                    Text("Settings")
-                }
-                .foregroundStyle(open == "Settings" ? Color.accentColor : .secondary)
-                .contentShape(Rectangle())
+        HStack(spacing: 0) {
+            footerButton("Open DeskBar", "⌘O") { openDashboard() }.keyboardShortcut("o", modifiers: .command)
+            Spacer(minLength: 4)
+            footerButton(moreActions ? "Fewer" : "More…", nil) {
+                withAnimation(.easeOut(duration: 0.2)) { moreActions.toggle() }
             }
-            .buttonStyle(.plain)
-            Spacer()
-            Button("Quit DeskBar") { NSApp.terminate(nil) }.buttonStyle(.borderless)
+            Spacer(minLength: 4)
+            footerButton("Settings", "⌘,") {
+                withAnimation(.easeOut(duration: 0.2)) { open = open == "Settings" ? "" : "Settings" }
+            }
+            .keyboardShortcut(",", modifiers: .command)
+            Spacer(minLength: 4)
+            footerButton("Quit", "⌘Q") { NSApp.terminate(nil) }.keyboardShortcut("q", modifiers: .command)
         }
-        .font(.system(size: 11))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 16).padding(.bottom, 12).padding(.top, 2)
+    }
+
+    private func footerButton(_ title: String, _ shortcut: String?, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Text(title)
+                if let shortcut { Text(shortcut).foregroundStyle(Color.secondaryText) }
+            }
+            .font(.system(size: 12))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// The hairline between groups, inset to the 16-pt margins.
+struct SectionRule: View {
+    var body: some View {
+        Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1).padding(.horizontal, 16)
     }
 }
 
@@ -308,29 +333,5 @@ extension View {
         opacity(revealed ? 1 : 0)
             .offset(y: revealed ? 0 : 8)
             .animation(revealed ? .easeOut(duration: 0.32).delay(0.07 * Double(step)) : nil, value: revealed)
-    }
-}
-
-/// "Open DeskBar" — a quiet, full-width row, like a menu item.
-struct OpenWindowRow: View {
-    let action: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: "macwindow").frame(width: 18)
-                Text("Open DeskBar")
-                Spacer()
-                Text("⌘O").foregroundStyle(.secondary)
-            }
-            .font(.system(size: 12.5))
-            .padding(.horizontal, 10).padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(hovering ? 0.1 : 0.06)))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .keyboardShortcut("o", modifiers: .command)
-        .onHover { hovering = $0 }
     }
 }

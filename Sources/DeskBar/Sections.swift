@@ -25,8 +25,9 @@ struct Sections: View {
     }
 
     var body: some View {
-        Module {
-            row("Wi-Fi", icon: stats.wifi.connected ? "wifi" : "wifi.slash", summary: wifiSummary) {
+        Module(plain: true) {
+            row("Wi-Fi", label: stats.wifi.connected ? stats.wifi.name ?? "Wi-Fi" : "Wi-Fi",
+                icon: stats.wifi.connected ? "wifi" : "wifi.slash", summary: wifiSummary) {
                 network
                 Text("Speed test").font(.system(size: 10.5, weight: .semibold)).padding(.top, 6)
                 speed
@@ -43,7 +44,8 @@ struct Sections: View {
         .font(.system(size: 12))
     }
 
-    private func row<Content: View>(_ title: String, icon: String, summary: String,
+    /// `title` is the row's key in the panel's one open slot; `label` is what it shows (the network name for Wi-Fi).
+    private func row<Content: View>(_ title: String, label: String? = nil, icon: String, summary: String,
                                     @ViewBuilder content: () -> Content) -> some View {
         let isOpen = open == title
         return VStack(alignment: .leading, spacing: 0) {
@@ -53,10 +55,10 @@ struct Sections: View {
                 if !isOpen && title == "Sound" { sound.refresh() }
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: icon).font(.system(size: 12)).frame(width: 18).foregroundStyle(.secondary)
-                    Text(title)
+                    Image(systemName: icon).font(.system(size: 13)).frame(width: 18).foregroundStyle(Color.secondaryText)
+                    Text(label ?? title).font(.system(size: 13)).lineLimit(1)
                     Spacer(minLength: 8)
-                    Text(summary).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    Text(summary).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1).truncationMode(.middle)
                     // Disclosure on the right, like the tiles' chevrons.
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .bold))
@@ -64,7 +66,7 @@ struct Sections: View {
                         .foregroundStyle(.tertiary)
                         .frame(width: 10)
                 }
-                .padding(.vertical, 6)
+                .frame(minHeight: 26)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -77,11 +79,13 @@ struct Sections: View {
 
     // MARK: Network
 
+    /// Ping, then the last speed test (or the link speed): what "is my internet OK?" needs.
     private var wifiSummary: String {
         if !stats.wifi.on { return "Off" }
         if !stats.wifi.connected { return "Not connected" }
         let ping = stats.pingMs.map { "\($0) ms" } ?? "no internet"
-        return [stats.wifi.name, ping, "↓ " + Format.rate(stats.download)].compactMap { $0 }.joined(separator: " · ")
+        let speed = speedTest.latest.map { "\(Int($0.downMbps.rounded())) Mbps" } ?? "\(stats.wifi.linkMbps) Mbps link"
+        return ping + " · " + speed
     }
 
     @ViewBuilder private var network: some View {
