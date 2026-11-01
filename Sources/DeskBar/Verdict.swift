@@ -229,7 +229,7 @@ struct VitalsCard: View {
                       stats.storage.map { "free of " + Format.bytes(UInt64($0.total)) } ?? "",
                       fraction: stats.storage.map { 1 - Double($0.free) / Double($0.total) } ?? 0,
                       tint: (stats.storage?.free ?? .max) < 10_000_000_000 ? .red : nil)
-                vital("battery", stats.battery?.charging == true ? "Charging" : "Battery",
+                vital("battery", "Battery",   // "charging" goes in the caption; the title would truncate
                       stats.battery.map { "\($0.percent)%" } ?? "Mains", batteryCaption,
                       fraction: stats.battery.map { Double($0.percent) / 100 } ?? 1, tint: batteryTint)
             }
