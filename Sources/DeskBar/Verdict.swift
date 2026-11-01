@@ -436,6 +436,13 @@ struct TodayLog: View {
                 found.append(Event(date: sample.date, text: "Battery dropped to 20%"))
             }
         }
-        return found.sorted { $0.date > $1.date }
+        // The same thing twice reads as one line with a count, newest time first, so two lines show two things.
+        var merged: [Event] = []
+        var seen: Set<String> = []
+        for event in found.sorted(by: { $0.date > $1.date }) where seen.insert(event.text).inserted {
+            let count = found.filter { $0.text == event.text }.count
+            merged.append(Event(date: event.date, text: count > 1 ? "\(event.text) · \(count) times" : event.text))
+        }
+        return merged
     }
 }
