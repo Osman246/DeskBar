@@ -102,7 +102,8 @@ enum Snapshot {
             }
             if CommandLine.arguments.contains("--profile") {
                 func ms(_ f: () -> Void) -> Double { let t = DispatchTime.now().uptimeNanoseconds; f(); return Double(DispatchTime.now().uptimeNanoseconds - t) / 1e6 }
-                print(String(format: "install (first open, main thread)  %.1f ms", MacScene.installMilliseconds))
+                print(String(format: "install (after launch, main thread)  %.1f ms", MacScene.installMilliseconds))
+                try? await Task.sleep(for: .seconds(4))   // let the background shader prewarm finish, as it would before a first open
                 let renderer = SCNRenderer(device: MTLCreateSystemDefaultDevice(), options: nil)
                 renderer.scene = model.mac.scene; renderer.pointOfView = model.mac.cameraNode
                 print(String(format: "first render (shader compile)  %.1f ms", ms { _ = renderer.snapshot(atTime: 0, with: CGSize(width: 640, height: 420), antialiasingMode: .multisampling4X) }))

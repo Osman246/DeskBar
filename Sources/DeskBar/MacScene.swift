@@ -300,13 +300,24 @@ final class MacScene: ObservableObject {
 
     /// Renders one frame offscreen so the graphics are prepared before the panel first opens
     /// (otherwise the first frame of the opening takes ~200 ms).
+    /// Compiles the GPU shaders before the panel first opens. It renders a copy of the scene
+    /// (nodes cloned, sharing geometry and materials) off the main thread: compiled shaders are
+    /// shared across renderers, and the 0.9 s compile no longer pauses the app after launch.
     private func prewarm() {
-        let renderer = SCNRenderer(device: MTLCreateSystemDefaultDevice(), options: nil)
-        renderer.scene = scene
-        renderer.pointOfView = cameraNode
         apply(current)
-        _ = renderer.snapshot(atTime: 0, with: CGSize(width: size.width * 2, height: size.height * 2),
-                              antialiasingMode: .multisampling4X)
+        let warm = SCNScene()
+        warm.lightingEnvironment.contents = scene.lightingEnvironment.contents
+        warm.lightingEnvironment.intensity = scene.lightingEnvironment.intensity
+        scene.rootNode.childNodes.forEach { warm.rootNode.addChildNode($0.clone()) }
+        let camera = cameraNode.clone()
+        warm.rootNode.addChildNode(camera)
+        let pixels = CGSize(width: size.width * 2, height: size.height * 2)
+        DispatchQueue.global(qos: .utility).async {
+            let renderer = SCNRenderer(device: MTLCreateSystemDefaultDevice(), options: nil)
+            renderer.scene = warm
+            renderer.pointOfView = camera
+            _ = renderer.snapshot(atTime: 0, with: pixels, antialiasingMode: .multisampling4X)
+        }
     }
 
     @discardableResult
@@ -1200,3 +1211,4 @@ extension Ports {
         }
     }
 }
+
