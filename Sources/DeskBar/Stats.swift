@@ -181,7 +181,7 @@ final class Stats: NSObject, ObservableObject, CLLocationManagerDelegate {
         gpuPercent = 3
         fans = []
         thermal = .nominal
-        memory = Readers.Memory(used: 98 * gb / 10, total: 16 * gb, pressure: .normal, app: 61 * gb / 10,
+        memory = Readers.Memory(used: 98 * gb / 10, total: 16 << 30, pressure: .normal, app: 61 * gb / 10,
                                 wired: 22 * gb / 10, compressed: 8 * gb / 10, cached: 31 * gb / 10)
         storage = (free: 214_000_000_000, total: 494_000_000_000)
         volumes = [Readers.Volume(url: URL(fileURLWithPath: "/"), name: "Macintosh HD", free: 214_000_000_000,
@@ -206,7 +206,7 @@ final class Stats: NSObject, ObservableObject, CLLocationManagerDelegate {
         bootTime = Date().addingTimeInterval(-3 * 86_400)   // "up 3 days"
         if Demo.alert {
             // Apps + wired + compressed = used, and with cached files it stays under the 16 GB total.
-            memory = Readers.Memory(used: 154 * gb / 10, total: 16 * gb, pressure: .high, app: 106 * gb / 10,
+            memory = Readers.Memory(used: 154 * gb / 10, total: 16 << 30, pressure: .high, app: 106 * gb / 10,
                                     wired: 22 * gb / 10, compressed: 26 * gb / 10, cached: 4 * gb / 10)
             memoryUsers = [("Safari", 64), ("Xcode", 32), ("Final Cut Pro", 21), ("Music", 4)].enumerated().map { i, user in
                 TopAppTracker.MemoryUser(name: user.0, bytes: UInt64(user.1) * gb / 10, app: nil, pid: pid_t(9000 + i))

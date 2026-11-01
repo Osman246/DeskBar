@@ -60,6 +60,7 @@ final class SmartAlerts: ObservableObject {
 
     /// Called after each refresh with the latest readings.
     func check(_ stats: Stats) {
+        guard !Demo.on else { return }   // made-up readings never become real notifications
         if let battery = stats.battery, !battery.onPower {
             evaluate(.battery, key: "battery10", when: battery.percent <= 10,
                      body: "\(battery.percent)% left. Plug in soon.")

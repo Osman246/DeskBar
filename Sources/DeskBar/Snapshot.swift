@@ -96,6 +96,10 @@ enum Snapshot {
                 print("Wrote window pages")
                 exit(0)
             }
+            if CommandLine.arguments.contains("--stress") {
+                await Stress.run(model: model)
+                exit(0)
+            }
             if CommandLine.arguments.contains("--profile") {
                 func ms(_ f: () -> Void) -> Double { let t = DispatchTime.now().uptimeNanoseconds; f(); return Double(DispatchTime.now().uptimeNanoseconds - t) / 1e6 }
                 print(String(format: "install (first open, main thread)  %.1f ms", MacScene.installMilliseconds))
@@ -231,14 +235,15 @@ enum Snapshot {
             let allShots: [(String, String, NSAppearance.Name)] = [
                 ("panel-light", "", .aqua), ("panel-dark", "", .darkAqua),
                 ("cpu", "cpu", .darkAqua), ("memory", "memory", .darkAqua), ("disk", "disk", .darkAqua),
-                ("battery", "battery", .darkAqua), ("network", "Network", .darkAqua),
-                ("sound", "Sound output", .darkAqua), ("display", "Display", .darkAqua),
-                ("speed", "Speed test", .darkAqua), ("devices", "Devices", .darkAqua),
-                ("alerts", "Smart alerts", .darkAqua),
+                ("battery", "battery", .darkAqua), ("network", "Wi-Fi", .darkAqua),
+                ("sound", "Sound", .darkAqua), ("display", "Display", .darkAqua),
+                ("devices", "Devices", .darkAqua), ("settings", "Settings", .darkAqua),
+                ("panel-expanded", "", .darkAqua),
                 ("ports-left", "ports-left", .darkAqua), ("ports-right", "ports-right", .darkAqua),
             ]
             // With DESKBAR_DEMO_ALERT, just the two warning-state shots the demo video uses.
-            let shots = Demo.alert ? [("alert-panel", "", NSAppearance.Name.darkAqua), ("alert-memory", "memory", .darkAqua)] : allShots
+            let shots = Demo.alert ? [("alert-panel", "", NSAppearance.Name.darkAqua), ("alert-memory", "memory", .darkAqua),
+                                      ("alert-panel-light", "", .aqua)] : allShots
             for (file, open, name) in shots {
                 // Pose the 3D Mac for this shot and render it as a still.
                 let stats = model.stats
@@ -247,7 +252,8 @@ enum Snapshot {
                 case "ports-right": model.mac.setMode(.ports(.right))
                 default: model.mac.setMode(.rest); model.mac.follow(tile: open)
                 }
-                model.mac.update(MacHero.state(stats: stats, warning: Demo.alert ? "Memory full" : nil))
+                UserDefaults.standard.set(file.hasSuffix("expanded"), forKey: "macExpanded")
+                model.mac.update(MacHero.state(stats: stats, warning: stats.problems.first?.word))
                 model.mac.settleForStill()
                 MacHero.stillImage = model.mac.still()
                 UserDefaults.standard.set(open.hasPrefix("ports") ? "" : open, forKey: "open")
@@ -267,6 +273,7 @@ enum Snapshot {
                 print("Wrote \(url.path)")
             }
             UserDefaults.standard.set("", forKey: "open")
+            UserDefaults.standard.set(false, forKey: "macExpanded")
             exit(0)
         }
         app.run()

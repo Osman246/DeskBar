@@ -602,9 +602,8 @@ final class MacScene: ObservableObject {
             setClockScreen()   // like the Mac itself: the time
         }
 
-        // Pills, in priority order: warning, camera, microphone, charging, clamshell.
+        // Pills, in priority order: camera, microphone, charging, clamshell. (Warnings are the verdict card's.)
         var list: [HeroPill] = []
-        if let warning = new.warning { list.append(HeroPill(text: warning, color: .orange)) }
         if new.cameraInUse { list.append(HeroPill(text: new.continuityCamera ? "iPhone camera in use" : "Camera in use", color: .green)) }
         if new.micInUse { list.append(HeroPill(text: "Microphone in use", color: .orange)) }
         if new.charging, mode != .charging, let p = new.batteryPercent { list.append(HeroPill(text: "Charging · \(p)%", color: .green)) }

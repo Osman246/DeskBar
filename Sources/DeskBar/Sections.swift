@@ -1,7 +1,9 @@
+import ServiceManagement
 import SwiftUI
 import UserNotifications
 
-/// The expandable rows: Network, Sound, Display, Speed test, Devices and Alerts.
+/// The expandable rows: Wi-Fi (with the network and speed test), Sound, Display, and Devices
+/// while something's connected or the camera or mic is on.
 /// They share the panel's single `open` slot with the tiles, so only one thing is expanded.
 struct Sections: View {
     let model: AppModel
@@ -24,19 +26,19 @@ struct Sections: View {
 
     var body: some View {
         Module {
-            row("Network", icon: "arrow.up.arrow.down", summary: "↓ \(Format.rate(stats.download))  ↑ \(Format.rate(stats.upload))") {
+            row("Wi-Fi", icon: stats.wifi.connected ? "wifi" : "wifi.slash", summary: wifiSummary) {
                 network
+                Text("Speed test").font(.system(size: 10.5, weight: .semibold)).padding(.top, 6)
+                speed
             }
             Divider()
-            row("Sound output", icon: "speaker.wave.2.fill", summary: sound.summary) { soundOutput }
+            row("Sound", icon: "speaker.wave.2.fill", summary: sound.summary) { soundOutput }
             Divider()
             row("Display", icon: "sun.max.fill", summary: display.summary) { displays }
-            Divider()
-            row("Speed test", icon: "gauge.with.needle", summary: speedTest.summary) { speed }
-            Divider()
-            row("Devices", icon: "headphones", summary: deviceSummary) { devices }
-            Divider()
-            row("Smart alerts", icon: "bell.badge", summary: alerts.summary) { alertSettings }
+            if hasDevices {
+                Divider()
+                row("Devices", icon: "headphones", summary: deviceSummary) { devices }
+            }
         }
         .font(.system(size: 12))
     }
@@ -48,18 +50,19 @@ struct Sections: View {
             Button {
                 withAnimation(.easeOut(duration: 0.2)) { open = isOpen ? "" : title }
                 if !isOpen && title == "Display" { display.refresh() }
-                if !isOpen && title == "Sound output" { sound.refresh() }
+                if !isOpen && title == "Sound" { sound.refresh() }
             } label: {
                 HStack(spacing: 8) {
+                    Image(systemName: icon).font(.system(size: 12)).frame(width: 18).foregroundStyle(.secondary)
+                    Text(title)
+                    Spacer(minLength: 8)
+                    Text(summary).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    // Disclosure on the right, like the tiles' chevrons.
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .bold))
                         .rotationEffect(.degrees(isOpen ? 90 : 0))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tertiary)
                         .frame(width: 10)
-                    Image(systemName: icon).font(.system(size: 12)).frame(width: 18)
-                    Text(title)
-                    Spacer()
-                    Text(summary).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 .padding(.vertical, 6)
                 .contentShape(Rectangle())
@@ -67,14 +70,30 @@ struct Sections: View {
             .buttonStyle(.plain)
             if isOpen {
                 VStack(alignment: .leading, spacing: 4) { content() }
-                    .padding(.leading, 36).padding(.bottom, 8)
+                    .padding(.leading, 26).padding(.bottom, 8)
             }
         }
     }
 
     // MARK: Network
 
+    private var wifiSummary: String {
+        if !stats.wifi.on { return "Off" }
+        if !stats.wifi.connected { return "Not connected" }
+        let ping = stats.pingMs.map { "\($0) ms" } ?? "no internet"
+        return [stats.wifi.name, ping, "↓ " + Format.rate(stats.download)].compactMap { $0 }.joined(separator: " · ")
+    }
+
     @ViewBuilder private var network: some View {
+        if stats.wifi.connected {
+            HStack {
+                InfoRow("Network", stats.wifi.name ?? "Hidden")
+                if stats.wifi.name == nil {
+                    Button("Show name") { model.stats.requestWiFiName() }.buttonStyle(.link).font(.system(size: 11))
+                }
+            }
+            InfoRow("Link", "\(stats.wifi.linkMbps) Mbps · " + (stats.pingMs.map { "\($0) ms ping" } ?? "no internet"))
+        }
         Graph(series: [(stats.downHistory.values, .blue), (stats.upHistory.values, .orange)],
               caption: "Download and upload · last hour",
               peak: Format.rate((stats.downHistory.values + stats.upHistory.values).max() ?? 0))
@@ -196,6 +215,10 @@ struct Sections: View {
 
     // MARK: Devices
 
+    private var hasDevices: Bool {
+        !stats.bluetooth.isEmpty || stats.cameraInUse || stats.micInUse || open == "Devices"
+    }
+
     private var deviceSummary: String {
         if stats.cameraInUse { return "Camera in use" }
         if stats.micInUse { return "Mic in use" }
@@ -209,8 +232,68 @@ struct Sections: View {
         InfoRow("Camera", stats.cameraInUse ? "In use" : "Not in use", warn: stats.cameraInUse)
         InfoRow("Microphone", stats.micInUse ? "In use" : "Not in use", warn: stats.micInUse)
     }
+}
 
-    // MARK: Smart alerts
+struct SpeedFigure: View {
+    let label: String
+    let value: String
+    let unit: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label).font(.system(size: 10)).foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value).font(.system(size: 18, weight: .semibold)).foregroundStyle(color == .secondary ? .primary : color)
+                Text(unit).font(.system(size: 10)).foregroundStyle(.secondary)
+            }
+            .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Settings, behind the gear: open at login and the smart alerts.
+struct SettingsModule: View {
+    let model: AppModel
+    @ObservedObject var alerts: SmartAlerts
+    @ObservedObject var actions: Actions
+    @Binding var openAtLogin: Bool
+
+    init(model: AppModel, openAtLogin: Binding<Bool>) {
+        self.model = model
+        alerts = model.alerts
+        actions = model.actions
+        _openAtLogin = openAtLogin
+    }
+
+    var body: some View {
+        Module {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Open at login").font(.system(size: 11.5))
+                    Spacer()
+                    Toggle("", isOn: $openAtLogin)
+                        .labelsHidden().toggleStyle(.switch).controlSize(.mini)
+                        .onChange(of: openAtLogin) { _, enabled in
+                            do {
+                                if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+                            } catch {
+                                actions.message = "Couldn't change the login setting"
+                                openAtLogin = SMAppService.mainApp.status == .enabled
+                            }
+                        }
+                }
+                Divider()
+                HStack {
+                    Text("Smart alerts").font(.system(size: 11.5, weight: .semibold))
+                    Spacer()
+                    Text(alerts.summary).font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                alertSettings
+            }
+        }
+    }
 
     @ViewBuilder private var alertSettings: some View {
         if alerts.permissionDenied {
@@ -238,24 +321,5 @@ struct Sections: View {
                     .controlSize(.mini)
             }
         }
-    }
-}
-
-struct SpeedFigure: View {
-    let label: String
-    let value: String
-    let unit: String
-    let color: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(label).font(.system(size: 10)).foregroundStyle(.secondary)
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(value).font(.system(size: 18, weight: .semibold)).foregroundStyle(color == .secondary ? .primary : color)
-                Text(unit).font(.system(size: 10)).foregroundStyle(.secondary)
-            }
-            .monospacedDigit()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

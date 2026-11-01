@@ -105,7 +105,11 @@ struct MenuBarLabel: View {
     }
 
     @ViewBuilder private var label: some View {
-        if let temp = stats.cpuTemp {
+        if let problem = stats.problems.first {
+            // Only when something needs you: an orange dot and what it is.
+            Image(nsImage: MenuBarDot.warning)
+            Text(problem.word)
+        } else if let temp = stats.cpuTemp {
             Image(systemName: temp >= 85 ? "thermometer.high" : "thermometer.medium")
             Text("\(Int(temp.rounded()))°")
         } else {
@@ -127,6 +131,10 @@ struct Panel: View {
     /// How many parts of the panel are showing below the Mac (all of them unless the opening plays).
     @State private var shown = Panel.allParts
     static let allParts = 6
+    /// The 3D Mac full size rather than a thumbnail, remembered between opens.
+    @AppStorage("macExpanded") var macExpanded = false
+    /// The second row of actions.
+    @AppStorage("moreActions") var moreActions = false
 
     init(model: AppModel) {
         self.model = model
@@ -161,26 +169,15 @@ struct Panel: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 8) {
-            MacHero(mac: model.mac, stats: stats, status: problems.first ?? "All good",
-                    warning: !problems.isEmpty, open: open)
+            VerdictCard(model: model, stats: stats, mac: mac, open: $open, macExpanded: $macExpanded)
             // During the opening the panel is just the Mac; afterwards each part drops into place.
             if shown >= 1 {
-                Button { toggle("cpu") } label: { CPUTile(stats: stats, selected: open == "cpu") }
-                    .buttonStyle(.plain)
-                    .transition(.dropIn)
-            }
-            if shown >= 2 {
-                HStack(spacing: 8) {
-                    Button { toggle("memory") } label: { memoryTile }.buttonStyle(.plain)
-                    Button { toggle("disk") } label: { diskTile }.buttonStyle(.plain)
-                    Button { toggle("battery") } label: { batteryTile }.buttonStyle(.plain)
-                }
-                .transition(.dropIn)
+                VitalsCard(stats: stats, open: $open).transition(.dropIn)
                 tileDetail
             }
-            if shown >= 3 { ConnectionsModule(stats: stats) { model.stats.requestWiFiName() }.transition(.dropIn) }
-            if shown >= 4 { Sections(model: model, open: $open).transition(.dropIn) }
-            if shown >= 5 { actionGrid.transition(.dropIn) }
+            if shown >= 3 { Sections(model: model, open: $open).transition(.dropIn) }
+            if shown >= 4 { actionGrid.transition(.dropIn) }
+            if shown >= 5 && open == "Settings" { SettingsModule(model: model, openAtLogin: $openAtLogin).transition(.dropIn) }
             if shown >= 6 {
                 OpenWindowRow { openDashboard() }.transition(.dropIn)
                 footer.transition(.dropIn)
@@ -191,7 +188,10 @@ struct Panel: View {
         .onChange(of: mac.revealed) { _, revealed in
             if revealed { dropIn() } else { shown = 0 }
         }
+        .onChange(of: macExpanded) { _, expanded in mac.playsIntro = expanded }
         .onAppear {
+            // The opening animation is for the full-size Mac; the thumbnail just appears.
+            mac.playsIntro = macExpanded
             if !mac.revealed && MacHero.stillImage == nil { shown = 0 }
             actions.refresh()
             model.display.refresh()
@@ -221,35 +221,7 @@ struct Panel: View {
         withAnimation(.easeOut(duration: 0.2)) { open = open == key ? "" : key }
     }
 
-    // MARK: Tiles
-
-    private var memoryTile: some View {
-        let memory = stats.memory
-        let tint: Color = switch memory?.pressure {
-        case .high: .red
-        case .moderate: .orange
-        default: .purple
-        }
-        return MiniTile(title: "Memory", value: memory.map { Format.bytes($0.used) } ?? "–",
-                        fraction: memory.map { Double($0.used) / Double($0.total) } ?? 0, tint: tint,
-                        selected: open == "memory")
-    }
-
-    private var diskTile: some View {
-        let disk = stats.storage
-        return MiniTile(title: "Disk", value: disk.map { Format.bytes(UInt64($0.free)) + " free" } ?? "–",
-                        fraction: disk.map { 1 - Double($0.free) / Double($0.total) } ?? 0,
-                        tint: (disk?.free ?? .max) < 10_000_000_000 ? .red : .teal, selected: open == "disk")
-    }
-
-    private var batteryTile: some View {
-        let battery = stats.battery
-        return MiniTile(title: battery?.charging == true ? "Charging" : "Battery",
-                        value: battery.map { "\($0.percent)%" } ?? "Mains",
-                        fraction: battery.map { Double($0.percent) / 100 } ?? 1,
-                        tint: (battery?.percent ?? 100) <= 20 && battery?.onPower == false ? .red : .green,
-                        selected: open == "battery")
-    }
+    // MARK: Details
 
     @ViewBuilder private var tileDetail: some View {
         switch open {
@@ -265,54 +237,55 @@ struct Panel: View {
 
     private var actionGrid: some View {
         Module {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 4), spacing: 10) {
+            HStack(spacing: 0) {
                 RoundToggle("Focus", "moon.fill", on: actions.focusOn) { Task { await actions.toggleFocus() } }
                 RoundToggle("Awake", "cup.and.saucer.fill", on: actions.stayAwake) { actions.toggleStayAwake() }
-                RoundToggle("Hide desk", "eye.slash.fill", on: actions.desktopHidden) { Task { await actions.toggleDesktop() } }
                 RoundToggle("Mute mic", "mic.slash.fill", on: actions.micMuted) { actions.toggleMic() }
-                RoundToggle("Display off", "display") { actions.sleepDisplays() }
-                RoundToggle("Capture", "camera.viewfinder") { actions.screenshot() }
-                RoundToggle("Clean up", "arrow.down.circle") { actions.cleanUpDownloads() }
                 RoundToggle("Lock", "lock.fill") { actions.lockScreen() }
+                RoundToggle(moreActions ? "Less" : "More", moreActions ? "chevron.up" : "ellipsis", on: false) {
+                    withAnimation(.easeOut(duration: 0.2)) { moreActions.toggle() }
+                }
             }
-            Text(actions.message)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 8)
+            if moreActions {
+                HStack(spacing: 0) {
+                    RoundToggle("Hide desk", "eye.slash.fill", on: actions.desktopHidden) { Task { await actions.toggleDesktop() } }
+                    RoundToggle("Display off", "display") { actions.sleepDisplays() }
+                    RoundToggle("Capture", "camera.viewfinder") { actions.screenshot() }
+                    RoundToggle("Clean up", "arrow.down.circle") { actions.cleanUpDownloads() }
+                    Color.clear.frame(maxWidth: .infinity)
+                }
+                .padding(.top, 10)
+            }
+            // Only after an action, to say what it did.
+            if !actions.message.isEmpty {
+                Text(actions.message)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 8)
+            }
         }
     }
 
     private var footer: some View {
         HStack {
-            Toggle("Open at login", isOn: $openAtLogin)
-                .toggleStyle(.checkbox)
-                .onChange(of: openAtLogin) { _, enabled in
-                    do {
-                        if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
-                    } catch {
-                        actions.message = "Couldn't change the login setting"
-                        openAtLogin = SMAppService.mainApp.status == .enabled
-                    }
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) { open = open == "Settings" ? "" : "Settings" }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "gearshape")
+                    Text("Settings")
                 }
+                .foregroundStyle(open == "Settings" ? Color.accentColor : .secondary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
             Spacer()
             Button("Quit DeskBar") { NSApp.terminate(nil) }.buttonStyle(.borderless)
         }
         .font(.system(size: 11))
         .foregroundStyle(.secondary)
         .padding(.horizontal, 4)
-    }
-
-    private var problems: [String] {
-        var list: [String] = []
-        if let temp = stats.cpuTemp, temp >= 85 { list.append("Running hot") }
-        if let b = stats.battery, b.percent <= 20, !b.onPower { list.append("Low battery") }
-        if stats.memory?.pressure == .high { list.append("Memory full") }
-        if let disk = stats.storage, disk.free < 10_000_000_000 { list.append("Disk almost full") }
-        if stats.thermal == .serious || stats.thermal == .critical { list.append("Throttling") }
-        if !stats.wifi.connected { list.append("Offline") }
-        else if stats.pingMs == nil { list.append("No internet") }
-        return list
     }
 }
 

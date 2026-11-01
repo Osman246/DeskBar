@@ -127,12 +127,14 @@ struct Sparkline: View {
     let values: [Double]
     let color: Color
     var ceiling: Double = 0
+    /// Stretch whatever history there is across the full width, instead of leaving the hour's empty space.
+    var fills = false
 
     var body: some View {
         Canvas { context, size in
             guard values.count > 1 else { return }
             let top = max(ceiling, values.max() ?? 0, 1)
-            let slots = Double(History.capacity - 1)
+            let slots = Double((fills ? values.count : History.capacity) - 1)
             let start = size.width - size.width * Double(values.count - 1) / slots
             var line = Path()
             for (i, value) in values.enumerated() {

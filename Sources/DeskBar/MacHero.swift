@@ -1,74 +1,51 @@
 import SceneKit
 import SwiftUI
 
-/// The top card: the living 3D Mac with your Mac's name and status.
+/// The living 3D Mac. Compact, it's a thumbnail beside the verdict (click to enlarge);
+/// full size, it's interactive, with the ports close-ups, desk view and pills.
 struct MacHero: View {
     @ObservedObject var mac: MacScene
     @ObservedObject var stats: Stats
     let status: String
     let warning: Bool
     let open: String
+    var compact = false
+    var expand: () -> Void = {}
+    var collapse: () -> Void = {}
     /// Snapshot mode renders a still image instead of a live 3D view.
     static var stillImage: NSImage?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 14).fill(Color.primary.opacity(0.06))
+            if compact { RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.07)) }
             if let still = Self.stillImage {
                 Image(nsImage: still).resizable()
             } else {
                 // Always present: its window-visibility watcher is what loads and starts the scene.
                 MacSceneView(mac: mac)
                 if mac.modelMissing {
-                    FlatMac(mac: mac).padding(.top, 34)
+                    if compact {
+                        Image(systemName: "macbook").font(.system(size: 30, weight: .ultraLight))
+                            .foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        FlatMac(mac: mac).padding(.top, 34)
+                    }
                 } else if !mac.loaded {
                     ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            if case .ports(let side) = mac.mode {
-                PortsOverlay(mac: mac, ports: stats.ports.filter { $0.side == side }, side: side)
+            if compact {
+                // The thumbnail is one button: click to see the Mac full size.
+                Button(action: expand) { Color.clear.contentShape(Rectangle()) }
+                    .buttonStyle(.plain)
+                    .help("Show your Mac")
             } else {
-                titleBlock.opacity(mac.mode == .rest || mac.modelMissing ? 1 : 0)
-            }
-            if !mac.mode.isPorts && Self.stillImage == nil && !mac.modelMissing {
-                // Desk button: between the MacBook and your whole desk.
-                Button { mac.toggleDesk() } label: {
-                    Image(systemName: mac.mode == .desk ? "laptopcomputer" : "display.2")
-                        .font(.system(size: 11, weight: .medium))
-                        .frame(width: 26, height: 26)
-                        .background(Circle().fill(.ultraThinMaterial))
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help(mac.mode == .desk ? "Back to your MacBook" : "Show your desk")
-                .padding(10)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .cascade(1, mac.revealed)
-            }
-            if !mac.pills.isEmpty && !mac.mode.isPorts {
-                // Detail the 3D screen leaves out: camera, microphone, charging, clamshell.
-                HStack(spacing: 6) {
-                    ForEach(mac.pills) { pill in
-                        HStack(spacing: 5) {
-                            Circle().fill(pill.color).frame(width: 6, height: 6)
-                            Text(pill.text).font(.system(size: 10.5, weight: .medium))
-                                .lineLimit(1).truncationMode(.tail).minimumScaleFactor(0.85)
-                        }
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Capsule().fill(.ultraThinMaterial))
-                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                    }
-                }
-                .lineLimit(1)
-                .padding(.leading, 10).padding(.bottom, 10)
-                .padding(.trailing, 46)    // never reaches the desk button
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                .animation(.easeOut(duration: 0.25), value: mac.pills)
-                .cascade(1, mac.revealed)
+                fullOverlays
             }
         }
-        .frame(width: MacScene.panelSize.width, height: MacScene.panelSize.height)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .frame(width: compact ? VerdictCard.compactSize.width : MacScene.panelSize.width,
+               height: compact ? VerdictCard.compactSize.height : MacScene.panelSize.height)
+        .clipShape(RoundedRectangle(cornerRadius: compact ? 10 : 14))
         .animation(.easeInOut(duration: 0.35), value: mac.mode)
         .onAppear { push() }   // rendering starts and stops with the panel's real visibility
         .onDisappear { mac.stop() }
@@ -83,6 +60,62 @@ struct MacHero: View {
         .onChange(of: stats.ports) { _, _ in push() }
         .onChange(of: stats.camerasInUse) { _, _ in push() }
         .onChange(of: stats.bluetooth.map(\.id)) { _, _ in push() }
+    }
+
+    @ViewBuilder private var fullOverlays: some View {
+        if case .ports(let side) = mac.mode {
+            PortsOverlay(mac: mac, ports: stats.ports.filter { $0.side == side }, side: side)
+        }
+        if !mac.mode.isPorts {
+            // Back to the thumbnail.
+            Button(action: collapse) {
+                Image(systemName: "arrow.down.right.and.arrow.up.left")
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: 24, height: 24)
+                    .background(Circle().fill(.ultraThinMaterial))
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help("Make the Mac small again")
+            .padding(10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        }
+        if !mac.mode.isPorts && Self.stillImage == nil && !mac.modelMissing {
+            // Desk button: between the MacBook and your whole desk.
+            Button { mac.toggleDesk() } label: {
+                Image(systemName: mac.mode == .desk ? "laptopcomputer" : "display.2")
+                    .font(.system(size: 11, weight: .medium))
+                    .frame(width: 26, height: 26)
+                    .background(Circle().fill(.ultraThinMaterial))
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help(mac.mode == .desk ? "Back to your MacBook" : "Show your desk")
+            .padding(10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            .cascade(1, mac.revealed)
+        }
+        if !mac.pills.isEmpty && !mac.mode.isPorts {
+            // Detail the 3D screen leaves out: camera, microphone, charging, clamshell.
+            HStack(spacing: 6) {
+                ForEach(mac.pills) { pill in
+                    HStack(spacing: 5) {
+                        Circle().fill(pill.color).frame(width: 6, height: 6)
+                        Text(pill.text).font(.system(size: 10.5, weight: .medium))
+                            .lineLimit(1).truncationMode(.tail).minimumScaleFactor(0.85)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Capsule().fill(.ultraThinMaterial))
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
+            }
+            .lineLimit(1)
+            .padding(.leading, 10).padding(.bottom, 10)
+            .padding(.trailing, 46)    // never reaches the desk button
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .animation(.easeOut(duration: 0.25), value: mac.pills)
+            .cascade(1, mac.revealed)
+        }
     }
 
     private func push() { mac.update(Self.state(stats: stats, warning: warning ? status : nil)) }
@@ -111,27 +144,6 @@ struct MacHero: View {
                             .map { $0.battery ?? "Connected" },
                         continuityCamera: stats.camerasInUse.contains { $0.hasPrefix("Continuity:") },
                         leftMonitor: left, rightMonitor: right)
-    }
-
-    private var titleBlock: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(Demo.on ? "MacBook Pro" : Host.current().localizedName ?? "This Mac").font(.system(size: 13, weight: .semibold))
-                    .cascade(0, mac.revealed)
-                Text(MacInfo.subtitle).font(.system(size: 10.5)).foregroundStyle(.secondary)
-                    .cascade(0, mac.revealed)
-                    .animation(mac.revealed ? .easeOut(duration: 0.32).delay(0.05) : nil, value: mac.revealed)
-            }
-            Spacer()
-            HStack(spacing: 5) {
-                Circle().fill(warning ? Color.orange : Color.green).frame(width: 6, height: 6)
-                Text(status)
-            }
-            .font(.system(size: 11))
-            .foregroundStyle(.secondary)
-            .cascade(1, mac.revealed)
-        }
-        .padding(12)
     }
 }
 
