@@ -50,30 +50,30 @@ enum Demo {
     static var now: Date { on ? date : Date() }
 }
 
-/// Opening DeskBar again (Finder, Spotlight, Launchpad) shows its window, as Mac apps do.
+/// Owns the model and the menu bar item. Opening DeskBar again (Finder, Spotlight, Launchpad)
+/// shows its window, as Mac apps do.
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    static let openWindow = Notification.Name("DeskBarOpenWindow")
+    let model = AppModel()
+    private var statusPanel: StatusPanel?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        statusPanel = StatusPanel(model: model)
+    }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        NotificationCenter.default.post(name: Self.openWindow, object: nil)
+        statusPanel?.openDashboard()
         return false
     }
 }
 
 struct DeskBarApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @StateObject private var model = AppModel()
 
     var body: some Scene {
-        MenuBarExtra {
-            Panel(model: model)
-        } label: {
-            MenuBarLabel(stats: model.stats)
-        }
-        .menuBarExtraStyle(.window)
-
+        // The menu bar item and its glass panel are AppKit (StatusPanel); the window is SwiftUI.
         Window("DeskBar", id: "dashboard") {
-            DashboardWindow(model: model)
+            DashboardWindow(model: delegate.model)
                 .onAppear {
                     // A menu bar app gets a Dock icon and Cmd-Tab entry only while its window is open.
                     NSApp.setActivationPolicy(.regular)
@@ -90,32 +90,20 @@ struct DeskBarApp: App {
     }
 }
 
-/// CPU temperature, or CPU load if the sensor can't be read.
-struct MenuBarLabel: View {
-    @ObservedObject var stats: Stats
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        label
-            // The label is always alive, so it listens for requests to open the window.
-            .onReceive(NotificationCenter.default.publisher(for: AppDelegate.openWindow)) { _ in
-                openWindow(id: "dashboard")
-                NSApp.activate()
-            }
-    }
-
-    @ViewBuilder private var label: some View {
+/// What the menu bar item shows: CPU temperature (or load, if the sensor can't be read),
+/// or, only when something needs you, a warning symbol and what it is. Symbols are template
+/// images, so the warning reads by shape in any menu bar colour.
+enum MenuBarLabel {
+    @MainActor static func content(stats: Stats) -> (symbol: String, text: String, accessibility: String) {
         if let problem = stats.problems.first {
-            // Only when something needs you: the symbol changes shape (menu bar icons are monochrome) and names it.
-            Image(systemName: "exclamationmark.triangle")
-            Text(problem.word)
-        } else if let temp = stats.cpuTemp {
-            Image(systemName: temp >= 85 ? "thermometer.high" : "thermometer.medium")
-            Text("\(Int(temp.rounded()))°")
-        } else {
-            Image(systemName: "cpu")
-            Text("\(Int(stats.cpuPercent.rounded()))%")
+            return ("exclamationmark.triangle", problem.word, problem.word + ". " + problem.reason)
         }
+        if let temp = stats.cpuTemp {
+            let degrees = Int(temp.rounded())
+            return (temp >= 85 ? "thermometer.high" : "thermometer.medium", "\(degrees)°", "All clear, \(degrees) degrees")
+        }
+        let load = Int(stats.cpuPercent.rounded())
+        return ("cpu", "\(load)%", "All clear, CPU \(load) percent")
     }
 }
 
@@ -127,7 +115,9 @@ struct Panel: View {
     /// The one tile or section that's expanded ("cpu", "memory", "Network", …), or "".
     @AppStorage("open") var open = ""
     @State private var openAtLogin = SMAppService.mainApp.status == .enabled
-    @Environment(\.openWindow) private var openWindow
+    @AppStorage(GlassStyle.key) private var glassStyle = GlassStyle.clear.rawValue
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     /// How many parts of the panel are showing below the Mac (all of them unless the opening plays).
     @State private var shown = Panel.allParts
     static let allParts = 6
@@ -172,6 +162,7 @@ struct Panel: View {
         VStack(alignment: .leading, spacing: 0) {
             Stage(model: model, stats: stats, mac: mac, open: $open, macExpanded: $macExpanded)
             // During the opening the panel is just the Mac; afterwards each part drops into place.
+            VStack(alignment: .leading, spacing: 0) {
             if shown >= 1 {
                 SectionRule()
                 VitalsRow(stats: stats, open: $open).transition(.dropIn)
@@ -190,6 +181,8 @@ struct Panel: View {
                 SettingsModule(model: model, openAtLogin: $openAtLogin).padding(.horizontal, 10).padding(.bottom, 8).transition(.dropIn)
             }
             if shown >= 6 { footer.transition(.dropIn) }
+            }
+            .background(textDimming)
         }
         .frame(width: 340)
         .onChange(of: mac.revealed) { _, revealed in
@@ -218,10 +211,14 @@ struct Panel: View {
     }
 
     private func openDashboard() {
-        openWindow(id: "dashboard")
-        NSApp.activate()
-        // Close the menu bar panel once the window is up.
-        NSApp.windows.filter { $0.isVisible && $0.className.contains("MenuBarExtra") }.forEach { $0.orderOut(nil) }
+        StatusPanel.shared?.openDashboard()   // opens the window and closes the panel
+    }
+
+    /// With clear glass, Apple's recipe for legible text over a busy desktop: a ~35% dimming layer
+    /// behind the text. The Mac's stage above it stays fully clear.
+    private var textDimming: Color {
+        guard glassStyle == GlassStyle.clear.rawValue, !reduceTransparency else { return .clear }
+        return colorScheme == .dark ? Color.black.opacity(0.35) : Color.white.opacity(0.4)
     }
 
     private func toggle(_ key: String) {

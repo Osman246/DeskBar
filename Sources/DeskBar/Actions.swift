@@ -167,7 +167,7 @@ final class Actions: ObservableObject {
     }
 
     private func closePanel() {
-        NSApp.windows.filter { $0.isVisible && $0.className.contains("MenuBarExtra") }.forEach { $0.orderOut(nil) }
+        StatusPanel.shared?.close()
     }
 
     private static var finderHidesDesktop: Bool {
