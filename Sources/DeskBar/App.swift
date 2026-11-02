@@ -75,7 +75,7 @@ struct DeskBarApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
-        // The menu bar item and its glass panel are AppKit (StatusPanel); the window is SwiftUI.
+        // The menu bar item and its panel are AppKit (StatusPanel); the window is SwiftUI.
         Window("DeskBar", id: "dashboard") {
             DashboardWindow(model: delegate.model)
                 .onAppear {
@@ -119,9 +119,6 @@ struct Panel: View {
     /// The one tile or section that's expanded ("cpu", "memory", "Network", …), or "".
     @AppStorage("open") var open = ""
     @State private var openAtLogin = SMAppService.mainApp.status == .enabled
-    @AppStorage(GlassStyle.key) private var glassStyle = GlassStyle.clear.rawValue
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     /// How many parts of the panel are showing below the Mac (all of them unless the opening plays).
     @State private var shown = Panel.allParts
     static let allParts = 6
@@ -162,7 +159,7 @@ struct Panel: View {
     }
 
     private var content: some View {
-        // One surface: groups are divided by hairlines, not boxed, so the panel's material shows through.
+        // One surface: groups are divided by hairlines, not boxed.
         VStack(alignment: .leading, spacing: 0) {
             Stage(model: model, stats: stats, mac: mac, open: $open, macExpanded: $macExpanded)
             // During the opening the panel is just the Mac; afterwards each part drops into place.
@@ -186,7 +183,6 @@ struct Panel: View {
             }
             if shown >= 6 { footer.transition(.dropIn) }
             }
-            .background(textDimming)
         }
         .frame(width: 340)
         .onChange(of: mac.revealed) { _, revealed in
@@ -218,12 +214,6 @@ struct Panel: View {
         StatusPanel.shared?.openDashboard()   // opens the window and closes the panel
     }
 
-    /// With clear glass, Apple's recipe for legible text over a busy desktop: a ~35% dimming layer
-    /// behind the text. The Mac's stage above it stays fully clear.
-    private var textDimming: Color {
-        guard glassStyle == GlassStyle.clear.rawValue, !reduceTransparency else { return .clear }
-        return colorScheme == .dark ? Color.black.opacity(0.35) : Color.white.opacity(0.4)
-    }
 
     private func toggle(_ key: String) {
         withAnimation(.easeOut(duration: 0.2)) { open = open == key ? "" : key }
@@ -243,7 +233,7 @@ struct Panel: View {
 
     // MARK: Actions and footer
 
-    /// Four labelled actions (icons alone are ambiguous), Liquid Glass on macOS 26; the active one is tinted.
+    /// Four labelled actions (icons alone are ambiguous); the active one is tinted.
     private var actionRow: some View {
         VStack(spacing: 8) {
             HStack(spacing: 6) {
@@ -272,7 +262,7 @@ struct Panel: View {
     }
 
     private func action(_ title: String, _ icon: String, on: Bool = false, run: @escaping () -> Void) -> some View {
-        GlassButton(title: title, icon: on ? icon + ".fill" : icon, prominent: on, fills: true, action: run)
+        PanelButton(title: title, icon: on ? icon + ".fill" : icon, prominent: on, fills: true, action: run)
             .accessibilityValue(on ? "On" : "Off")
     }
 

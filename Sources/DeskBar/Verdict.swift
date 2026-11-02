@@ -97,8 +97,8 @@ extension Problem.Fix {
     }
 }
 
-/// Text that sits on glass: the system's secondary grey is 50%, which measured under 4.5:1
-/// over a bright wallpaper; 65% passes in both appearances.
+/// Secondary text at 65% rather than the system's 50%, which measured under 4.5:1 contrast
+/// over a bright wallpaper showing through the panel's material.
 extension Color {
     static let secondaryText = Color.primary.opacity(0.65)
 }
@@ -138,10 +138,10 @@ struct Stage: View {
             if let problem, problem.fix != nil || problem.detail != nil {
                 HStack(spacing: 8) {
                     if let label = problem.fixLabel, let fix = problem.fix {
-                        GlassButton(title: label, prominent: true) { fix.run(actions: model.actions) }
+                        PanelButton(title: label, prominent: true) { fix.run(actions: model.actions) }
                     }
                     if let label = problem.detailLabel, let detail = problem.detail {
-                        GlassButton(title: label) {
+                        PanelButton(title: label) {
                             withAnimation(.easeOut(duration: 0.2)) { open = open == detail ? "" : detail }
                         }
                     }
@@ -208,45 +208,32 @@ struct Stage: View {
     }
 }
 
-/// A Liquid Glass button on macOS 26 (accent-tinted when prominent), a bordered one before that.
-struct GlassButton: View {
+/// A capsule button: grey, or accent-filled when it's the main action or a toggle that's on.
+/// Drawn in SwiftUI, so it looks the same in the panel and in snapshot tests.
+struct PanelButton: View {
     let title: String
     var icon: String? = nil
     var prominent = false
     var fills = false
     let action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
-        let label = HStack(spacing: 5) {
-            if let icon { Image(systemName: icon).font(.system(size: 11, weight: .medium)) }
-            // Shrinks slightly rather than truncating when four share a row.
-            Text(title).font(.system(size: 12, weight: prominent ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.8)
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if let icon { Image(systemName: icon).font(.system(size: 11, weight: .medium)) }
+                // Shrinks slightly rather than truncating when four share a row.
+                Text(title).font(.system(size: 12, weight: prominent ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(prominent ? Color.white : .primary)
+            .padding(.horizontal, fills ? 4 : 12).frame(height: 28)
+            .frame(maxWidth: fills ? .infinity : nil)
+            .background(Capsule().fill(prominent ? Color.accentColor.opacity(hovering ? 0.85 : 1)
+                                                 : Color.primary.opacity(hovering ? 0.15 : 0.1)))
+            .contentShape(Capsule())
         }
-        .frame(maxWidth: fills ? .infinity : nil)
-        if MacHero.stillImage != nil {
-            // Snapshot renders can't capture Liquid Glass (the window server draws it live),
-            // so tests get a drawn stand-in with the same size, tint and label colours.
-            Button(action: action) {
-                label.foregroundStyle(prominent ? Color.white : .primary)
-                    .padding(.horizontal, fills ? 4 : 12).frame(height: 28)
-                    .background(Capsule().fill(prominent ? Color.accentColor : Color.primary.opacity(0.1)))
-                    .overlay(Capsule().strokeBorder(LinearGradient(colors: [.white.opacity(0.4), .white.opacity(0.03)],
-                                                                   startPoint: .top, endPoint: .bottom), lineWidth: 0.8))
-            }
-            .buttonStyle(.plain)
-        } else if #available(macOS 26, *) {
-            if prominent {
-                Button(action: action) { label }.buttonStyle(.glassProminent).controlSize(fills ? .regular : .large)
-            } else {
-                Button(action: action) { label }.buttonStyle(.glass).controlSize(fills ? .regular : .large)
-            }
-        } else {
-            if prominent {
-                Button(action: action) { label }.buttonStyle(.borderedProminent).controlSize(.large)
-            } else {
-                Button(action: action) { label }.buttonStyle(.bordered).controlSize(.large)
-            }
-        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
     }
 }
 

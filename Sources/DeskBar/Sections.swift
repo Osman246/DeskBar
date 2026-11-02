@@ -288,21 +288,6 @@ struct SettingsModule: View {
                             }
                         }
                 }
-                if #available(macOS 26, *) {
-                    Divider()
-                    HStack {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Clear glass").font(.system(size: 11.5))
-                            Text("Your desktop shows through the panel. Off: frosted, standard glass.")
-                                .font(.system(size: 10)).foregroundStyle(Color.secondaryText)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer()
-                        Toggle("", isOn: Binding(get: { GlassStyle.current == .clear },
-                                                 set: { UserDefaults.standard.set(($0 ? GlassStyle.clear : .standard).rawValue, forKey: GlassStyle.key) }))
-                            .labelsHidden().toggleStyle(.switch).controlSize(.mini)
-                    }
-                }
                 Divider()
                 HStack {
                     Text("Smart alerts").font(.system(size: 11.5, weight: .semibold))

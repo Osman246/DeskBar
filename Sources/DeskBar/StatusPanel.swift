@@ -2,21 +2,19 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// The menu bar item and its panel. DeskBar draws the panel itself (rather than using SwiftUI's
-/// MenuBarExtra, whose glass is fixed to the subtle regular style) so it can use AppKit's
-/// NSGlassEffectView: clear glass by default, standard if you prefer, set in Settings.
+/// The menu bar item and its panel, drawn by DeskBar itself (rather than SwiftUI's MenuBarExtra,
+/// which on macOS 26 forces Liquid Glass) on the standard frosted popover material.
 @MainActor
 final class StatusPanel: NSObject {
     static private(set) var shared: StatusPanel?
 
     private let model: AppModel
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let panel = GlassPanel()
+    private let panel = MenuPanel()
     private let host: ResizingHostingView<AnyView>
     private var outsideClick: Any?
     private var escape: Any?
     private var labelUpdates: AnyCancellable?
-    private var styleUpdates: AnyCancellable?
     /// Opens the DeskBar window. SwiftUI's openWindow only works from a hosted view, so a tiny one
     /// lives off-screen for as long as the app runs.
     private let opener = NSPanel(contentRect: NSRect(x: -4000, y: -4000, width: 1, height: 1),
@@ -44,32 +42,22 @@ final class StatusPanel: NSObject {
 
         host.sizingOptions = [.intrinsicContentSize]
         host.onResize = { [weak self] in self?.place() }
-        if #available(macOS 26, *) {
-            let glass = NSGlassEffectView()
-            glass.cornerRadius = 18
-            glass.contentView = host
-            panel.contentView = glass
-            applyGlassStyle()
-            styleUpdates = NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
-                .receive(on: RunLoop.main)
-                .sink { [weak self] _ in self?.applyGlassStyle() }
-        } else {
-            let material = NSVisualEffectView()
-            material.material = .popover
-            material.state = .active
-            material.wantsLayer = true
-            material.layer?.cornerRadius = 12
-            material.layer?.masksToBounds = true
-            host.translatesAutoresizingMaskIntoConstraints = false
-            material.addSubview(host)
-            NSLayoutConstraint.activate([
-                host.leadingAnchor.constraint(equalTo: material.leadingAnchor),
-                host.trailingAnchor.constraint(equalTo: material.trailingAnchor),
-                host.topAnchor.constraint(equalTo: material.topAnchor),
-                host.bottomAnchor.constraint(equalTo: material.bottomAnchor),
-            ])
-            panel.contentView = material
-        }
+        // The standard frosted material macOS uses for menus and popovers.
+        let material = NSVisualEffectView()
+        material.material = .popover
+        material.state = .active
+        material.wantsLayer = true
+        material.layer?.cornerRadius = 14
+        material.layer?.masksToBounds = true
+        host.translatesAutoresizingMaskIntoConstraints = false
+        material.addSubview(host)
+        NSLayoutConstraint.activate([
+            host.leadingAnchor.constraint(equalTo: material.leadingAnchor),
+            host.trailingAnchor.constraint(equalTo: material.trailingAnchor),
+            host.topAnchor.constraint(equalTo: material.topAnchor),
+            host.bottomAnchor.constraint(equalTo: material.bottomAnchor),
+        ])
+        panel.contentView = material
 
         opener.contentView = NSHostingView(rootView: DashboardOpener { [weak self] action in self?.openDashboardAction = action })
         opener.orderFrontRegardless()
@@ -141,25 +129,11 @@ final class StatusPanel: NSObject {
         button.title = " " + label.text
         button.setAccessibilityLabel("DeskBar: " + label.accessibility)
     }
-
-    @available(macOS 26, *)
-    private func applyGlassStyle() {
-        guard let glass = panel.contentView as? NSGlassEffectView else { return }
-        let style: NSGlassEffectView.Style = GlassStyle.current == .clear ? .clear : .regular
-        if glass.style != style { glass.style = style }
-    }
-}
-
-/// Which Liquid Glass the panel uses. Clear shows the desktop through it; standard is frostier.
-enum GlassStyle: String {
-    case clear, standard
-    static let key = "glassStyle"
-    static var current: GlassStyle { GlassStyle(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .clear }
 }
 
 /// A borderless panel that can take key status (for Escape and the footer's shortcuts)
 /// without activating DeskBar or taking focus from your app's windows.
-final class GlassPanel: NSPanel {
+final class MenuPanel: NSPanel {
     init() {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isOpaque = false
