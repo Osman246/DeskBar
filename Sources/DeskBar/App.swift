@@ -61,6 +61,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusPanel = StatusPanel(model: model)
     }
 
+    /// DeskBar lives in the menu bar: closing its window must not quit it. (SwiftUI quits an app whose
+    /// only scene is a single Window when that window closes; the menu bar item isn't a scene.)
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         statusPanel?.openDashboard()
         return false

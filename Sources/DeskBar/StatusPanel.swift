@@ -30,6 +30,8 @@ final class StatusPanel: NSObject {
         super.init()
         Self.shared = self
 
+        // A stable name, so macOS remembers where you ⌘-drag the item.
+        item.autosaveName = "DeskBar"
         if let button = item.button {
             button.target = self
             button.action = #selector(toggle)
