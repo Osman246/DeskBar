@@ -45,6 +45,16 @@ struct MacHero: View {
         .frame(width: compact ? Stage.macSize.width : MacScene.panelSize.width,
                height: compact ? Stage.macSize.height : MacScene.panelSize.height)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        // Zoomed in, the charging cable runs past the left edge: fade it out over 15 pt rather than
+        // cutting it off. The laptop itself starts about 20 pt in, so it's untouched.
+        .mask {
+            if compact {
+                LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 15 / Stage.macSize.width)],
+                               startPoint: .leading, endPoint: .trailing)
+            } else {
+                Rectangle()
+            }
+        }
         .animation(.easeInOut(duration: 0.35), value: mac.mode)
         .onAppear { push() }   // rendering starts and stops with the panel's real visibility
         .onDisappear { mac.stop() }
