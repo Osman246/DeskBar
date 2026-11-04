@@ -16,19 +16,24 @@ import SwiftUI
 @MainActor
 enum DemoVideo {
     /// `open` is only a recording (the 3D Mac's opening, shown under the brand card).
-    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open, tour, fix }
+    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open, tour, fix, week, numbers, heard, shipped }
 
     /// `--v2`: the 1.1 cut, about 27 s. The first film's average view was 17–18 s, right where it left the
     /// panel for the hardware, so this one stays on the panel: the opening, the new panel, a problem fixed, download.
-    nonisolated(unsafe) static let v2 = CommandLine.arguments.contains("--v2")
+    nonisolated(unsafe) static let v2 = CommandLine.arguments.contains("--v2") || v3
+    /// `--v3`: "one week after launch", about 31 s. What the launch data and feedback said, the change each one
+    /// led to on the real panel, a problem fixed in one click, how it was tested, download.
+    nonisolated(unsafe) static let v3 = CommandLine.arguments.contains("--v3")
     static var sequence: [Part] {
-        v2 ? [.hook, .tour, .fix, .cta] : [.hook, .dashboard, .lid, .plug, .ports, .news, .heat, .outcome, .thesis, .brand, .cta]
+        if v3 { return [.week, .numbers, .heard, .fix, .shipped, .cta] }
+        return v2 ? [.hook, .tour, .fix, .cta] : [.hook, .dashboard, .lid, .plug, .ports, .news, .heat, .outcome, .thesis, .brand, .cta]
     }
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
     static let lengths: [Part: Double] = [.hook: 2.15, .dashboard: 12.85, .lid: 2.8, .plug: 3.0, .ports: 4.0, .news: 4.2,
-                                          .heat: 6.0, .outcome: 6.0, .thesis: 7.0, .brand: 5.0, .cta: 7.0, .open: 0,
-                                          .tour: 11.0, .fix: 7.2]
+                                          .heat: 6.0, .outcome: 6.0, .thesis: 7.0, .brand: 5.0, .cta: v3 ? 5.0 : 7.0, .open: 0,
+                                          .tour: 11.0, .fix: v3 ? 5.6 : 7.2,
+                                          .week: 2.8, .numbers: 3.6, .heard: 12.4, .shipped: 3.4]
     static var total: Double { sequence.reduce(0) { $0 + lengths[$1]! } }
     /// When each part starts, for the sound track.
     static func start(of part: Part) -> Double { sequence.prefix { $0 != part }.reduce(0) { $0 + lengths[$1]! } }
@@ -345,6 +350,10 @@ struct DemoFrame: View {
                 case .cta: callToAction
                 case .tour: tour
                 case .fix: fix
+                case .week: week
+                case .numbers: numbers
+                case .heard: heard
+                case .shipped: shipped
                 default: EmptyView()
                 }
                 if Self.productParts.contains(part) { product }
@@ -510,11 +519,15 @@ struct DemoFrame: View {
             }
             Spacer()
             HStack(spacing: 7) {
-                Image(systemName: "thermometer.medium")
-                Text("39°").monospacedDigit()
+                if DemoVideo.v3 && part == .fix && local < Self.v2QuitClick + 0.3 {
+                    Image(systemName: "exclamationmark.triangle")
+                    Text("Memory full")
+                } else {
+                    Image(systemName: "macbook")   // DeskBar's quiet mark when all's clear
+                }
             }
             .font(.system(size: 26, weight: .medium))
-            .frame(width: 128, height: 42)
+            .frame(minWidth: 84).padding(.horizontal, 12).frame(height: 42)
             .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(panelOpen ? 0.22 : 0)))
             Image(systemName: "wifi").font(.system(size: 24)).frame(width: 64)
             Image(systemName: "battery.75percent").font(.system(size: 27)).frame(width: 72)
@@ -553,6 +566,11 @@ struct DemoFrame: View {
             let target = Self.tourFraming(local).point(Self.v2MemoryTile.x, Self.v2MemoryTile.y)
             return (glide(CGPoint(x: 540, y: 1180), target, ease((local - (Self.v2MemoryClick - 0.6)) / 0.5)),
                     clicking(local - Self.v2MemoryClick), target)
+        case .heard where Self.heardIndex(local) == 3 && local > Self.heardClick - 0.8 && local < Self.heardClick + 0.9:
+            let f = Self.heardMemoryFraming(local)
+            let target = f.point(Self.v2MemoryTile.x, Self.v2MemoryTile.y)
+            return (glide(CGPoint(x: 560, y: 1200), target, ease((local - (Self.heardClick - 0.6)) / 0.5)),
+                    clicking(local - Self.heardClick), target)
         case .fix where local > 0.9 && local < 2.6:
             let target = Self.fixProblemFraming.point(Self.v2QuitButton.x, Self.v2QuitButton.y)
             return (glide(CGPoint(x: 620, y: 1180), target, ease((local - 1.0) / 0.55)), clicking(local - Self.v2QuitClick), target)
@@ -581,7 +599,8 @@ struct DemoFrame: View {
             .opacity((part == .dashboard || part == .tour) && local < 1.4 ? 1 - clamp((local - 1.0) / 0.3)
                      : part == .outcome ? 1 - clamp((local - 0.9) / 0.3)
                      : part == .tour ? 1 - clamp((local - Self.v2MemoryClick - 0.5) / 0.3)
-                     : part == .fix ? 1 - clamp((local - Self.v2QuitClick - 0.5) / 0.3) : 1)
+                     : part == .fix ? 1 - clamp((local - Self.v2QuitClick - 0.5) / 0.3)
+                     : part == .heard ? 1 - clamp((local - Self.heardClick - 0.5) / 0.3) : 1)
         }
     }
 
@@ -1046,8 +1065,7 @@ struct DemoFrame: View {
     /// DeskBar's real menu bar item, used as its mark (the app has no other logo).
     private func mark(_ size: CGFloat) -> some View {
         HStack(spacing: size * 0.28) {
-            Image(systemName: "thermometer.medium")
-            Text("39°").monospacedDigit()
+            Image(systemName: "macbook")
         }
         .font(.system(size: size, weight: .medium))
         .foregroundStyle(.white)
@@ -1219,7 +1237,17 @@ enum DemoSound {
         let at = DemoVideo.start(of:)
         for i in 0..<4 { pop(at(.hook) + 0.22 * Double(i) - 0.25) }
         for start in [1.45, 1.68, 1.91, 2.14] { whoosh(at(.hook) + start - 0.35, 0.4, 0.22); pop(at(.hook) + start + 0.05) }
-        if DemoVideo.v2 {
+        if DemoVideo.v3 {
+            whoosh(at(.numbers), 0.35, 0.2)
+            for i in 0..<3 { pop(at(.numbers) + 0.3 + 0.45 * Double(i)) }
+            for i in 0..<4 { whoosh(at(.heard) + DemoFrame.heardBeat * Double(i), 0.35, 0.18) }
+            click(at(.heard) + DemoFrame.heardClick)
+            whoosh(at(.fix), 0.3, 0.22)
+            click(at(.fix) + DemoFrame.v2QuitClick)
+            chime(at(.fix) + DemoFrame.v2QuitClick + 0.35)
+            for i in 0..<3 { pop(at(.shipped) + 0.6 + 0.4 * Double(i)) }
+            pop(at(.cta) + 0.8)
+        } else if DemoVideo.v2 {
             click(at(.tour) + 0.04)
             whoosh(at(.tour) + 0.1, 0.35, 0.25)
             whoosh(at(.tour) + 2.2, 0.8, 0.3)
@@ -1410,5 +1438,164 @@ extension DemoFrame {
             }
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+    }
+}
+
+// MARK: - One week after launch (--v3)
+
+extension DemoFrame {
+    /// The feedback beats: each is one line heard after launch, the change it led to, on the real panel.
+    static let heardBeat = 3.1
+    static func heardIndex(_ local: Double) -> Int { min(3, Int(local / heardBeat)) }
+    /// When the pointer opens Memory in the last beat (seconds into the part).
+    static let heardClick = 3 * heardBeat + 1.0
+
+    /// The stats row, growing down as Memory opens (last feedback beat).
+    static func heardMemoryFraming(_ local: Double) -> Framing {
+        let open = ease((local - heardClick - 0.08) / 0.45)
+        return Framing.fit(v2Stats.0, v2Stats.1 + (v2MemoryEnd - v2Stats.1) * CGFloat(open), centreY: 760, maxHeight: 640)
+    }
+
+    private static func pixels(_ image: NSImage?, _ fallback: CGFloat) -> CGFloat {
+        CGFloat(image?.representations.first?.pixelsHigh ?? Int(fallback))
+    }
+
+    /// The poster frame: what this film is, with the product already on screen.
+    var week: some View {
+        let f = Framing.fit(Self.v2Stage.0, Self.v2Stage.1, centreY: 820, maxHeight: 520)
+        return ZStack(alignment: .topLeading) {
+            framed([(shots.panel, Self.pixels(shots.panel, 1142), 1)], f)
+                .opacity(1 - leaving)
+            VStack(spacing: 22) {
+                Text("ONE WEEK AFTER LAUNCH")
+                    .font(.system(size: 26, weight: .semibold)).tracking(8)
+                    .foregroundStyle(Color(white: 0.6))
+                Headline(text: "What changed,|*and why.*", size: 100, time: local + 1, leave: leaving)
+            }
+            .frame(width: DemoVideo.size.width)
+            .offset(y: 150)
+        }
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+    }
+
+    /// What the first post's data said, three numbers, one line.
+    var numbers: some View {
+        let items: [(String, String)] = [("228", "people watched"), ("17 s", "average watch, of 60"), ("4", "clicked through to GitHub")]
+        return VStack(spacing: 46) {
+            Text("WHAT THE DATA SAID").font(.system(size: 26, weight: .semibold)).tracking(8).foregroundStyle(Color(white: 0.6))
+                .opacity(easeOut(local / 0.3) * (1 - leaving))
+            ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+                let p = springy((local - 0.3 - 0.45 * Double(i)) / 0.45)
+                VStack(spacing: 4) {
+                    Text(item.0).font(serif(120)).foregroundStyle(.white).monospacedDigit()
+                    Text(item.1).font(.system(size: 32)).foregroundStyle(Color(white: 0.66))
+                }
+                .scaleEffect(0.9 + 0.1 * p)
+                .opacity(clamp(p * 1.5) * (1 - leaving))
+            }
+            Text("So I listened, *and cut.*".replacingOccurrences(of: "*", with: ""))
+                .font(serif(48)).italic().foregroundStyle(.white)
+                .opacity(easeOut((local - 2.0) / 0.4) * (1 - leaving))
+        }
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
+        .offset(y: 30)
+    }
+
+    /// Four beats: what I heard, then what changed, on the real panel.
+    var heard: some View {
+        let i = Self.heardIndex(local)
+        let beat = local - Double(i) * Self.heardBeat
+        let out = i < 3 ? clamp((beat - (Self.heardBeat - 0.22)) / 0.22) : leaving
+        let lines: [(heard: String, change: String)] = [
+            ("“The one sentence wasn't clear.”", "Now the answer *is* the sentence."),
+            ("“39° in the menu bar isn't useful.”", "Quiet when fine. *Speaks when it isn't.*"),
+            ("“There's a lot to take in.”", "One line each. *Colour only when it matters.*"),
+            ("“Two clicks is fine.”", "Detail, *one click away.*"),
+        ]
+        return ZStack(alignment: .topLeading) {
+            VStack(spacing: 14) {
+                Text("FEEDBACK AFTER LAUNCH  \(i + 1) / 4")
+                    .font(.system(size: 24, weight: .semibold)).tracking(6).foregroundStyle(Color(white: 0.55))
+                Text(lines[i].heard).font(serif(54)).italic().foregroundStyle(Color(white: 0.85))
+                    .blur(radius: 8 * (1 - easeOut(beat / 0.3)))
+                    .opacity(easeOut(beat / 0.3) * (1 - out))
+            }
+            .frame(width: DemoVideo.size.width)
+            .offset(y: 120)
+            heardVisual(i, beat)
+                .opacity(easeOut((beat - 0.35) / 0.35) * (1 - out))
+            Headline(text: lines[i].change, size: 64, time: beat - 0.9, leave: out)
+                .frame(width: DemoVideo.size.width)
+                .offset(y: 1150)
+        }
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+    }
+
+    @ViewBuilder private func heardVisual(_ i: Int, _ beat: Double) -> some View {
+        switch i {
+        case 0:
+            // The answer, in words: the problem panel's stage.
+            framed([(shots.alertPanel, Self.pixels(shots.alertPanel, 1222), 1)], Framing.fit(0, 384, centreY: 720, maxHeight: 560))
+        case 1:
+            // The menu bar item: the old temperature, then the quiet Mac, then the warning when it matters.
+            let toMac = easeOut((beat - 0.9) / 0.35), toWarn = easeOut((beat - 1.9) / 0.35)
+            VStack(spacing: 40) {
+                ForEach(0..<3, id: \.self) { row in
+                    HStack(spacing: 30) {
+                        HStack(spacing: 12) {
+                            switch row {
+                            case 0: Image(systemName: "thermometer.medium"); Text("39°")
+                            case 1: Image(systemName: "macbook")
+                            default: Image(systemName: "exclamationmark.triangle"); Text("Memory full")
+                            }
+                        }
+                        .font(.system(size: 54, weight: .medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 36).frame(height: 104)
+                        .background(RoundedRectangle(cornerRadius: 22).fill(Color.white.opacity(0.12)))
+                        .overlay {
+                            if row == 0 { Rectangle().fill(Color.white.opacity(0.7)).frame(height: 3).scaleEffect(x: toMac, anchor: .leading) }
+                        }
+                        .frame(width: 470, alignment: .trailing)
+                        // One column of labels, aligned.
+                        Text(row == 0 ? "before" : row == 1 ? "all clear" : "a problem")
+                            .font(.system(size: 32, weight: .medium)).foregroundStyle(Color(white: 0.78))
+                            .frame(width: 220, alignment: .leading)
+                    }
+                    .opacity(row == 0 ? 1 - 0.65 * toMac : row == 1 ? toMac : toWarn)
+                }
+            }
+            .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
+            .offset(y: -20)
+        case 2:
+            // Less on screen: the stats row and Today, one line each.
+            framed([(shots.panel, Self.pixels(shots.panel, 1142), 1)], Framing.fit(Self.v2Stats.0, 690, centreY: 720, maxHeight: 640))
+        default:
+            framed([(shots.panel, Self.pixels(shots.panel, 1142), 1)], Self.heardMemoryFraming(local))
+                .overlay {
+                    framed([(shots.memory, Self.pixels(shots.memory, 1532), 1)], Self.heardMemoryFraming(local))
+                        .opacity(ease((local - Self.heardClick - 0.08) / 0.45) > 0 ? 1 : 0)
+                }
+        }
+    }
+
+    /// How it shipped: the checks every build passed before it went live.
+    var shipped: some View {
+        let checks = ["Tested on real data, every build", "1,260 changes, no memory leak", "1 bug caught before it shipped"]
+        return VStack(spacing: 40) {
+            Headline(text: "Tested before|*every release.*", size: 84, time: local - 0.05, leave: leaving)
+            VStack(alignment: .leading, spacing: 26) {
+                ForEach(Array(checks.enumerated()), id: \.offset) { i, check in
+                    let p = springy((local - 0.6 - 0.4 * Double(i)) / 0.4)
+                    HStack(spacing: 18) {
+                        Image(systemName: "checkmark.circle.fill").font(.system(size: 40)).foregroundStyle(Color.green.opacity(0.8))
+                        Text(check).font(.system(size: 38)).foregroundStyle(.white)
+                    }
+                    .scaleEffect(0.92 + 0.08 * p, anchor: .leading)
+                    .opacity(clamp(p * 1.5) * (1 - leaving))
+                }
+            }
+        }
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
     }
 }
