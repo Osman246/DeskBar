@@ -31,7 +31,7 @@ enum DemoVideo {
     /// how it shipped, download. The launch film's average view was 17 s, so the hook is the answer itself.
     nonisolated(unsafe) static let v5 = CommandLine.arguments.contains("--v5") || v6
     /// `--v6`: about 26 s, acted out rather than read: the pointer clicks, the answer lands ("All good."),
-    /// a problem appears and is fixed in one click; each old design is crossed off and replaced.
+    /// a problem appears and is fixed in one click; each old design morphs into the new one.
     nonisolated(unsafe) static let v6 = CommandLine.arguments.contains("--v6")
     static var sequence: [Part] {
         if v6 { return [.open6, .changes6, .process5, .cta] }
@@ -1297,8 +1297,8 @@ enum DemoSound {
             chime(at(.open6) + DemoFrame.v6QuitClick + 0.3)
             for i in 0..<4 {
                 let b = at(.changes6) + DemoFrame.v6Beat * Double(i)
-                whoosh(b + DemoFrame.v6Strike, 0.25, 0.16)
-                pop(b + DemoFrame.v6NewIn + 0.1)
+                whoosh(b + DemoFrame.v6Morph, 0.35, 0.16)
+                pop(b + DemoFrame.v6Morph + 0.35)
             }
             click(at(.changes6) + DemoFrame.v6DetailPointer(DemoFrame.v6Beat * 2 + 1).1)
             for i in 0..<6 { pop(at(.process5) + 0.35 + 0.18 * Double(i)) }

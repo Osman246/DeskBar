@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Acted out (--v6)
 
 /// The 26-second cut, shown rather than read: the pointer clicks, the answer lands, a problem appears
-/// and is fixed in one click; then each old design is crossed off, tips over, and the new one springs in.
+/// and is fixed in one click; then each old design shrinks away as the new one grows in its place.
 extension DemoFrame {
     // Timing of the opening (seconds into .open6).
     static let v6MenuClick = 0.6, v6WarnAt = 2.3, v6QuitClick = 4.0
@@ -12,7 +12,7 @@ extension DemoFrame {
     static let v6CalmFraming = Framing.fit(6, 306, centreY: 860, maxHeight: 470)
 
     // Timing of each change (seconds into its beat).
-    static let v6Beat = 3.25, v6Strike = 0.85, v6Fall = 1.15, v6NewIn = 1.35
+    static let v6Beat = 3.25, v6Morph = 0.9, v6NewIn = 1.35
 
     static func v6Warning(_ part: DemoVideo.Part, _ local: Double) -> Bool {
         DemoVideo.v6 && part == .open6 && local >= v6WarnAt && local < v6QuitClick + 0.15
@@ -170,7 +170,7 @@ extension DemoFrame {
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
     }
 
-    // MARK: The changes: crossed off, replaced
+    // MARK: The changes: the old one morphs into the new
 
     var changes6: some View {
         let local = v6Local
@@ -184,9 +184,9 @@ extension DemoFrame {
             ("New: what happened today", "Report the day, *not just the moment.*", "Turn data into something people use"),
         ]
         let item = items[i]
-        let strike = v6in((beat - Self.v6Strike) / 0.25)
-        let fall = v6in((beat - Self.v6Fall) / 0.45)
-        let arrive = v6spring((beat - Self.v6NewIn) / 0.5)
+        // The old shrinks up and away while the new grows out of the same spot.
+        let shrink = v6in((beat - Self.v6Morph) / 0.4)
+        let grow = v6spring((beat - Self.v6Morph - 0.1) / 0.5)
         return ZStack(alignment: .topLeading) {
             VStack(spacing: 8) {
                 Text("\(i + 1) / 4  ·  FEEDBACK AFTER LAUNCH")
@@ -196,35 +196,27 @@ extension DemoFrame {
             .frame(width: DemoVideo.size.width)
             .offset(y: 96)
             .opacity(v6in(beat / 0.25) * (1 - out))
-            // Before: shown, crossed off, tipped over.
             ZStack {
-                v6old(i)
                 Text("BEFORE · 1.0")
                     .font(.system(size: 22, weight: .bold)).tracking(5).foregroundStyle(Color(white: 0.55))
-                    .frame(width: DemoVideo.size.width)
-                    .offset(y: -300)
-                Rectangle().fill(Color.white)
-                    .frame(width: 760 * strike, height: 7)
-                    .shadow(color: .black.opacity(0.6), radius: 6)
-                    .rotationEffect(.degrees(-7))
-                    .frame(width: 760, alignment: .leading)
-                    .offset(y: -10)
-            }
-            .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
-            .rotationEffect(.degrees(14 * fall), anchor: .bottomTrailing)
-            .offset(y: 520 * CGFloat(fall * fall))
-            .opacity(v6in(beat / 0.25) * (1 - fall))
-            // Now: springs into place.
-            ZStack {
-                v6new(i, local)
+                    .opacity(v6in(beat / 0.25) * (1 - shrink))
                 Text("NOW · 1.1")
                     .font(.system(size: 22, weight: .bold)).tracking(5).foregroundStyle(.white)
-                    .frame(width: DemoVideo.size.width)
-                    .offset(y: -300)
+                    .opacity(min(max(grow * 1.6, 0), 1) * (1 - out))
             }
             .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
-            .scaleEffect(0.82 + 0.18 * arrive)
-            .opacity(min(max(arrive * 1.6, 0), 1) * (1 - out))
+            .offset(y: -300)
+            // Before: shrinks up and fades.
+            v6old(i)
+                .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
+                .scaleEffect(1 - 0.6 * shrink)
+                .offset(y: -40 * CGFloat(shrink))
+                .opacity(v6in(beat / 0.25) * (1 - shrink))
+            // Now: grows out of the same spot (the menu bar's two states one after the other).
+            v6new(i, local, beat)
+                .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
+                .scaleEffect(i == 0 ? 1 : 0.4 + 0.6 * grow)
+                .opacity((i == 0 ? 1 : min(max(grow * 1.6, 0), 1)) * (1 - out))
             // The lesson and the skill.
             VStack(spacing: 18) {
                 Headline(text: item.lesson, size: 58, time: beat - Self.v6NewIn - 0.2, leave: out)
@@ -252,12 +244,15 @@ extension DemoFrame {
         }
     }
 
-    @ViewBuilder private func v6new(_ i: Int, _ local: Double) -> some View {
+    @ViewBuilder private func v6new(_ i: Int, _ local: Double, _ beat: Double) -> some View {
         switch i {
         case 0:
+            let first = v6spring((beat - Self.v6Morph - 0.1) / 0.5), second = v6spring((beat - Self.v6Morph - 0.3) / 0.5)
             VStack(spacing: 30) {
                 v6menuItem("macbook", "", caption: "all good")
+                    .scaleEffect(0.3 + 0.7 * first).opacity(min(max(first * 1.6, 0), 1))
                 v6menuItem("exclamationmark.triangle", "Memory full", caption: "a problem")
+                    .scaleEffect(0.3 + 0.7 * second).opacity(min(max(second * 1.6, 0), 1))
             }
         case 1: v6card(shots.panel, v6rows(shots.panel, 1142), Framing.fit(300, 478, centreY: 720, maxHeight: 500))
         case 2:
@@ -283,6 +278,7 @@ extension DemoFrame {
             .frame(width: caption == nil ? nil : 520, alignment: .trailing)
             if let caption {
                 Text(caption).font(.system(size: 34, weight: .medium)).foregroundStyle(Color(white: 0.8))
+                    .lineLimit(1).fixedSize()
                     .frame(width: 260, alignment: .leading)
             }
         }
