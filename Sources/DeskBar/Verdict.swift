@@ -430,13 +430,10 @@ struct TodayLog: View {
     var body: some View {
         // What's wrong now is already the headline; Today is what happened earlier.
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Today").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.secondaryText)
-                Spacer()
-                if report.minutesOn > 0 {
-                    Text("on for " + Self.duration(report.minutesOn)).font(.system(size: 11)).foregroundStyle(Color.secondaryText)
-                }
-            }
+            // One heading line: "Today · on for 11 h 2 m".
+            (Text("Today").font(.system(size: 11, weight: .semibold))
+                + Text(report.minutesOn > 0 ? " · on for " + Self.duration(report.minutesOn) : "").font(.system(size: 11)))
+                .foregroundStyle(Color.secondaryText)
             if report.minutesOn < 15 {
                 Text("Just getting started. Today's story builds up as you work.")
                     .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
