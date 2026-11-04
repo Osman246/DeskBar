@@ -16,24 +16,29 @@ import SwiftUI
 @MainActor
 enum DemoVideo {
     /// `open` is only a recording (the 3D Mac's opening, shown under the brand card).
-    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open, tour, fix, week, numbers, heard, shipped }
+    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open, tour, fix, week, numbers, heard, shipped, intro4, pairs, process }
 
     /// `--v2`: the 1.1 cut, about 27 s. The first film's average view was 17–18 s, right where it left the
     /// panel for the hardware, so this one stays on the panel: the opening, the new panel, a problem fixed, download.
     nonisolated(unsafe) static let v2 = CommandLine.arguments.contains("--v2") || v3
     /// `--v3`: "one week after launch", about 31 s. What the launch data and feedback said, the change each one
     /// led to on the real panel, a problem fixed in one click, how it was tested, download.
-    nonisolated(unsafe) static let v3 = CommandLine.arguments.contains("--v3")
+    nonisolated(unsafe) static let v3 = CommandLine.arguments.contains("--v3") || v4
+    /// `--v4`: before and after, about 29 s. Each change shows v1.0 on top and 1.1 below, both held long
+    /// enough to read, with the feedback that led to it; then how it shipped, then download.
+    nonisolated(unsafe) static let v4 = CommandLine.arguments.contains("--v4")
     static var sequence: [Part] {
+        if v4 { return [.intro4, .pairs, .process, .cta] }
         if v3 { return [.week, .numbers, .heard, .fix, .shipped, .cta] }
         return v2 ? [.hook, .tour, .fix, .cta] : [.hook, .dashboard, .lid, .plug, .ports, .news, .heat, .outcome, .thesis, .brand, .cta]
     }
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
     static let lengths: [Part: Double] = [.hook: 2.15, .dashboard: 12.85, .lid: 2.8, .plug: 3.0, .ports: 4.0, .news: 4.2,
-                                          .heat: 6.0, .outcome: 6.0, .thesis: 7.0, .brand: 5.0, .cta: v3 ? 5.0 : 7.0, .open: 0,
+                                          .heat: 6.0, .outcome: 6.0, .thesis: 7.0, .brand: 5.0, .cta: v4 ? 4.4 : v3 ? 5.0 : 7.0, .open: 0,
                                           .tour: 11.0, .fix: v3 ? 5.6 : 7.2,
-                                          .week: 2.8, .numbers: 3.6, .heard: 12.4, .shipped: 3.4]
+                                          .week: 2.8, .numbers: 3.6, .heard: 12.4, .shipped: 3.4,
+                                          .intro4: 2.4, .pairs: 18.5, .process: 4.0]
     static var total: Double { sequence.reduce(0) { $0 + lengths[$1]! } }
     /// When each part starts, for the sound track.
     static func start(of part: Part) -> Double { sequence.prefix { $0 != part }.reduce(0) { $0 + lengths[$1]! } }
@@ -81,12 +86,19 @@ enum DemoVideo {
         if let i = CommandLine.arguments.firstIndex(of: "--images"), i + 1 < CommandLine.arguments.count {
             images = CommandLine.arguments[i + 1] + "/"
         }
-        let shots = Shots(panel: NSImage(contentsOfFile: images + "panel-dark.png"),
+        var shots = Shots(panel: NSImage(contentsOfFile: images + "panel-dark.png"),
                           memory: NSImage(contentsOfFile: images + "memory.png"),
                           disk: NSImage(contentsOfFile: images + "disk.png"),
                           battery: NSImage(contentsOfFile: images + "battery.png"),
                           alertPanel: NSImage(contentsOfFile: images + "alert-panel.png"),
                           alertMemory: NSImage(contentsOfFile: images + "alert-memory.png"))
+        // `--before <dir>`: v1.0's screenshots, for the before-and-after cut.
+        if let i = CommandLine.arguments.firstIndex(of: "--before"), i + 1 < CommandLine.arguments.count {
+            let before = CommandLine.arguments[i + 1] + "/"
+            shots.beforePanel = NSImage(contentsOfFile: before + "panel-dark.png")
+            shots.beforeAlert = NSImage(contentsOfFile: before + "alert-panel.png")
+            shots.beforeMemory = NSImage(contentsOfFile: before + "memory.png")
+        }
 
         let url = URL(fileURLWithPath: directory).appendingPathComponent("deskbar-demo.mp4")
         try? FileManager.default.removeItem(at: url)
@@ -151,6 +163,9 @@ enum DemoVideo {
         var battery: NSImage?
         var alertPanel: NSImage?
         var alertMemory: NSImage?
+        var beforePanel: NSImage? = nil
+        var beforeAlert: NSImage? = nil
+        var beforeMemory: NSImage? = nil
     }
 
     // MARK: Recording the 3D Mac
@@ -257,7 +272,7 @@ private func serif(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
 
 /// A headline that arrives word by word, each word sharpening out of a blur. Words wrapped in
 /// `*` are set in italic; `|` breaks the line.
-private struct Headline: View {
+struct Headline: View {
     let text: String
     let size: CGFloat
     let time: Double         // seconds since it started
@@ -354,6 +369,9 @@ struct DemoFrame: View {
                 case .numbers: numbers
                 case .heard: heard
                 case .shipped: shipped
+                case .intro4: intro4
+                case .pairs: pairs
+                case .process: process
                 default: EmptyView()
                 }
                 if Self.productParts.contains(part) { product }
@@ -1237,7 +1255,14 @@ enum DemoSound {
         let at = DemoVideo.start(of:)
         for i in 0..<4 { pop(at(.hook) + 0.22 * Double(i) - 0.25) }
         for start in [1.45, 1.68, 1.91, 2.14] { whoosh(at(.hook) + start - 0.35, 0.4, 0.22); pop(at(.hook) + start + 0.05) }
-        if DemoVideo.v3 {
+        if DemoVideo.v4 {
+            for i in 0..<5 {
+                whoosh(at(.pairs) + DemoFrame.pairBeat * Double(i), 0.35, 0.18)
+                pop(at(.pairs) + DemoFrame.pairBeat * Double(i) + DemoFrame.nowDelay)
+            }
+            for i in 0..<6 { pop(at(.process) + 0.5 + 0.28 * Double(i)) }
+            pop(at(.cta) + 0.8)
+        } else if DemoVideo.v3 {
             whoosh(at(.numbers), 0.35, 0.2)
             for i in 0..<3 { pop(at(.numbers) + 0.3 + 0.45 * Double(i)) }
             for i in 0..<4 { whoosh(at(.heard) + DemoFrame.heardBeat * Double(i), 0.35, 0.18) }
