@@ -58,7 +58,8 @@ struct MacHero: View {
         .animation(.easeInOut(duration: 0.35), value: mac.mode)
         .onAppear { push() }   // rendering starts and stops with the panel's real visibility
         .onDisappear { mac.stop() }
-        .onChange(of: open) { _, tile in mac.follow(tile: tile); push() }
+        // Full size, the Mac turns to show heat or charging for the open stat; small, it stays at rest.
+        .onChange(of: open) { _, tile in if !compact { mac.follow(tile: tile) }; push() }
         .onChange(of: stats.cpuTemp) { _, _ in push() }
         .onChange(of: stats.battery?.percent) { _, _ in push() }
         .onChange(of: mac.mode) { _, _ in push() }

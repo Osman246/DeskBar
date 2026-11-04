@@ -226,7 +226,7 @@ struct Panel: View {
     @ViewBuilder private var tileDetail: some View {
         switch open {
         case "cpu": Module { CPUDetails(stats: stats) }
-        case "memory": Module { MemoryDetails(stats: stats) }
+        case "memory": Module { MemoryDetails(stats: stats, actions: actions) }
         case "disk": Module { DiskDetails(stats: stats, actions: actions) }
         case "battery": Module { BatteryDetails(stats: stats) }
         default: EmptyView()

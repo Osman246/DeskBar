@@ -75,7 +75,7 @@ extension Stats {
 
     /// Only ordinary apps get a Quit button (never Finder or a background process).
     /// Demo mode shows the button on its made-up apps.
-    private static func canQuit(_ app: NSRunningApplication?) -> Bool {
+    static func canQuit(_ app: NSRunningApplication?) -> Bool {
         if Demo.on { return true }
         guard let app else { return false }
         return app.activationPolicy == .regular && app.bundleIdentifier != "com.apple.finder"
@@ -130,7 +130,6 @@ struct Stage: View {
                     mac.resetView()
                     withAnimation(.spring(response: 0.45, dampingFraction: 0.88)) {
                         macExpanded = false
-                        if open == "cpu" || open == "battery" { open = "" }
                     }
                 }
                 if expanded { headline(problem, more: problems.count - 1).padding(.horizontal, 6) }
@@ -156,9 +155,10 @@ struct Stage: View {
         .animation(.easeOut(duration: 0.25), value: problem)
     }
 
-    /// Full size while you've asked for it, or while it's showing heat, charging or a side's ports.
+    /// Full size while you've asked for it, or while it's showing a side's ports. Opening a stat
+    /// leaves it small, so the panel doesn't jump and the answer stays at the top.
     private var expanded: Bool {
-        macExpanded || open == "cpu" || open == "battery" || mac.mode.isPorts
+        macExpanded || mac.mode.isPorts
     }
 
     private func headline(_ problem: Problem?, more: Int) -> some View {

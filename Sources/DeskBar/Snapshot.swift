@@ -251,7 +251,7 @@ enum Snapshot {
                 switch open {
                 case "ports-left": model.mac.setMode(.ports(.left))
                 case "ports-right": model.mac.setMode(.ports(.right))
-                default: model.mac.setMode(.rest); model.mac.follow(tile: open)
+                default: model.mac.setMode(.rest)   // a small Mac stays at rest when a stat is open, as in the panel
                 }
                 UserDefaults.standard.set(file.hasSuffix("expanded"), forKey: "macExpanded")
                 model.mac.update(MacHero.state(stats: stats, warning: stats.problems.first?.word))
