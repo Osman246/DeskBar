@@ -122,12 +122,13 @@ final class StatusPanel: NSObject {
     private func updateLabel() {
         guard let button = item.button else { return }
         let label = MenuBarLabel.content(stats: model.stats)
+        button.setAccessibilityLabel("DeskBar: " + label.accessibility)   // cheap; VoiceOver hears the details
+        // Redraw only when what you see changes, not with every temperature tick.
         guard label.symbol + label.text != shownLabel else { return }
         shownLabel = label.symbol + label.text
-        button.image = NSImage(systemSymbolName: label.symbol, accessibilityDescription: label.accessibility)
+        button.image = NSImage(systemSymbolName: label.symbol, accessibilityDescription: "DeskBar")
         button.image?.isTemplate = true
-        button.title = " " + label.text
-        button.setAccessibilityLabel("DeskBar: " + label.accessibility)
+        button.title = label.text.isEmpty ? "" : " " + label.text   // the glyph alone when all's clear
     }
 }
 

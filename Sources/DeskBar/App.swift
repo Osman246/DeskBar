@@ -96,20 +96,16 @@ struct DeskBarApp: App {
     }
 }
 
-/// What the menu bar item shows: CPU temperature (or load, if the sensor can't be read),
-/// or, only when something needs you, a warning symbol and what it is. Symbols are template
-/// images, so the warning reads by shape in any menu bar colour.
+/// What the menu bar item shows: a small MacBook when all's clear (a temperature isn't an answer),
+/// and, only when something needs you, a warning symbol and what it is. Symbols are template
+/// images, so the state reads by shape in any menu bar colour.
 enum MenuBarLabel {
     @MainActor static func content(stats: Stats) -> (symbol: String, text: String, accessibility: String) {
         if let problem = stats.problems.first {
             return ("exclamationmark.triangle", problem.word, problem.word + ". " + problem.reason)
         }
-        if let temp = stats.cpuTemp {
-            let degrees = Int(temp.rounded())
-            return (temp >= 85 ? "thermometer.high" : "thermometer.medium", "\(degrees)°", "All clear, \(degrees) degrees")
-        }
-        let load = Int(stats.cpuPercent.rounded())
-        return ("cpu", "\(load)%", "All clear, CPU \(load) percent")
+        let detail = stats.cpuTemp.map { ", \(Int($0.rounded())) degrees" } ?? ", CPU \(Int(stats.cpuPercent.rounded())) percent"
+        return ("macbook", "", "All clear" + detail)
     }
 }
 
