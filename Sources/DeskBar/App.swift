@@ -105,7 +105,7 @@ enum MenuBarLabel {
             return ("exclamationmark.triangle", problem.word, problem.word + ". " + problem.reason)
         }
         let detail = stats.cpuTemp.map { ", \(Int($0.rounded())) degrees" } ?? ", CPU \(Int(stats.cpuPercent.rounded())) percent"
-        return ("macbook", "", "All clear" + detail)
+        return ("macbook", "", "All good" + detail)
     }
 }
 

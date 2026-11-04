@@ -5,9 +5,13 @@ import SwiftUI
 /// Five changes, each with v1.0 on top and 1.1 below, both held long enough to read: the feedback
 /// that led to it, the lesson, and the skill it shows. Then how it shipped.
 extension DemoFrame {
-    static let pairBeat = 3.7
+    static var pairBeat: Double { DemoVideo.v5 ? 3.1 : 3.7 }
     /// "Now" arrives a beat after "Before", so each is read on its own first.
-    static let nowDelay = 0.8
+    static var nowDelay: Double { DemoVideo.v5 ? 0.7 : 0.8 }
+
+    enum Change { case icon, answer, colour, detail, today }
+    /// The 22 s cut opens on the answer itself, so its changes skip the answer beat.
+    static var changes: [Change] { DemoVideo.v5 ? [.icon, .colour, .detail, .today] : [.icon, .answer, .colour, .detail, .today] }
     /// Bands of the frame: before on top, now below.
     static let beforeBand = (centre: CGFloat(480), height: CGFloat(390))
     static let nowBand = (centre: CGFloat(950), height: CGFloat(390))
@@ -57,22 +61,23 @@ extension DemoFrame {
 
     var pairs: some View {
         let local = beatLocal
-        let i = min(4, Int(local / Self.pairBeat))
+        let changes = Self.changes
+        let i = min(changes.count - 1, Int(local / Self.pairBeat))
+        let change = changes[i]
         let beat = local - Double(i) * Self.pairBeat
-        let out = i < 4 ? min(max((beat - (Self.pairBeat - 0.22)) / 0.22, 0), 1) : beatLeaving
+        let out = i < changes.count - 1 ? min(max((beat - (Self.pairBeat - 0.22)) / 0.22, 0), 1) : beatLeaving
         let now = fadeIn((beat - Self.nowDelay) / 0.4)
-        let items: [(feedback: String, lesson: String, skill: String)] = [
-            ("“39° in the menu bar isn't useful.”", "Quiet when fine. *Speaks when it isn't.*", "Act on feedback, fast"),
-            ("“The one sentence wasn't clear.”", "Lead with the answer, *then the fix.*", "Explain it in plain English"),
-            ("“There's a lot to take in.”", "Colour should mean *one thing.*", "Cut what doesn't earn its place"),
-            ("“Two clicks is fine.”", "Detail in plain words, *one click away.*", "Detail on demand, not by default"),
-            ("New: what happened today", "Report the day, *not just the moment.*", "Turn data into something people use"),
-        ]
-        let item = items[i]
+        let item: (feedback: String, lesson: String, skill: String) = switch change {
+        case .icon: ("“39° in the menu bar isn't useful.”", "Quiet when fine. *Speaks when it isn't.*", "Act on feedback, fast")
+        case .answer: ("“The one sentence wasn't clear.”", "Lead with the answer, *then the fix.*", "Explain it in plain English")
+        case .colour: ("“There's a lot to take in.”", "Colour should mean *one thing.*", "Cut what doesn't earn its place")
+        case .detail: ("“Two clicks is fine.”", "Detail in plain words, *one click away.*", "Detail on demand, not by default")
+        case .today: ("New: what happened today", "Report the day, *not just the moment.*", "Turn data into something people use")
+        }
         return ZStack(alignment: .topLeading) {
             // The feedback that led to it, and the lesson.
             VStack(spacing: 10) {
-                Text("\(i + 1) / 5   " + item.feedback)
+                Text("\(i + 1) / \(changes.count)   " + item.feedback)
                     .font(.system(size: 26, weight: .semibold)).foregroundStyle(Color(white: 0.62))
                     .opacity(fadeIn(beat / 0.25) * (1 - out))
                 Headline(text: item.lesson, size: 60, time: beat - 0.05, leave: out)
@@ -81,10 +86,10 @@ extension DemoFrame {
             .offset(y: 92)
             beforeAfterLabel("BEFORE · 1.0", y: Self.beforeBand.centre - Self.beforeBand.height / 2 - 38)
                 .opacity(fadeIn(beat / 0.3) * (1 - out))
-            beforeShot(i).opacity(fadeIn(beat / 0.3) * (1 - out) * (1 - 0.35 * now))
+            beforeShot(change).opacity(fadeIn(beat / 0.3) * (1 - out) * (1 - 0.35 * now))
             beforeAfterLabel("NOW · 1.1", y: Self.nowBand.centre - Self.nowBand.height / 2 - 38, bright: true)
                 .opacity(now * (1 - out))
-            nowShot(i).opacity(now * (1 - out)).offset(y: 30 * (1 - now))
+            nowShot(change).opacity(now * (1 - out)).offset(y: 30 * (1 - now))
             // The skill it shows, for anyone hiring.
             HStack(spacing: 12) {
                 Image(systemName: "checkmark.seal.fill").foregroundStyle(Color.green.opacity(0.8))
@@ -134,13 +139,13 @@ extension DemoFrame {
         }
     }
 
-    @ViewBuilder private func beforeShot(_ i: Int) -> some View {
-        switch i {
-        case 0: bigMenuItems([("thermometer.medium", "39°", "what does 39° mean?")], centre: Self.beforeBand.centre)
-        case 1: framedShot(shots.beforeAlert, Self.rows(shots.beforeAlert, 1746), band(14, 446, Self.beforeBand))
-        case 2: framedShot(shots.beforePanel, Self.rows(shots.beforePanel, 1746), band(447, 795, Self.beforeBand))   // CPU and tiles, not Wi-Fi
-        case 3: framedShot(shots.beforeMemory, Self.rows(shots.beforeMemory, 2144), band(796, 1180, Self.beforeBand))   // its Memory list (rows 788–1186)
-        default:
+    @ViewBuilder private func beforeShot(_ change: Change) -> some View {
+        switch change {
+        case .icon: bigMenuItems([("thermometer.medium", "39°", "what does 39° mean?")], centre: Self.beforeBand.centre)
+        case .answer: framedShot(shots.beforeAlert, Self.rows(shots.beforeAlert, 1746), band(14, 446, Self.beforeBand))
+        case .colour: framedShot(shots.beforePanel, Self.rows(shots.beforePanel, 1746), band(447, 795, Self.beforeBand))   // CPU and tiles, not Wi-Fi
+        case .detail: framedShot(shots.beforeMemory, Self.rows(shots.beforeMemory, 2144), band(796, 1180, Self.beforeBand))   // its Memory list (rows 788–1186)
+        case .today:
             Text("Not there.")
                 .font(.system(size: 52, weight: .regular)).italic().foregroundStyle(Color(white: 0.45))
                 .frame(width: DemoVideo.size.width)
@@ -148,13 +153,13 @@ extension DemoFrame {
         }
     }
 
-    @ViewBuilder private func nowShot(_ i: Int) -> some View {
-        switch i {
-        case 0: bigMenuItems([("macbook", "", "all clear"), ("exclamationmark.triangle", "Memory full", "a problem")], centre: Self.nowBand.centre)
-        case 1: framedShot(shots.alertPanel, Self.rows(shots.alertPanel, 1222), band(0, 384, Self.nowBand))
-        case 2: framedShot(shots.panel, Self.rows(shots.panel, 1142), band(300, 478, Self.nowBand))
-        case 3: framedShot(shots.memory, Self.rows(shots.memory, 1532), band(480, 768, Self.nowBand))   // the answer and top apps (detail from row 473)
-        default: framedShot(shots.panel, Self.rows(shots.panel, 1142), band(470, 808, Self.nowBand))
+    @ViewBuilder private func nowShot(_ change: Change) -> some View {
+        switch change {
+        case .icon: bigMenuItems([("macbook", "", "all good"), ("exclamationmark.triangle", "Memory full", "a problem")], centre: Self.nowBand.centre)
+        case .answer: framedShot(shots.alertPanel, Self.rows(shots.alertPanel, 1222), band(0, 384, Self.nowBand))
+        case .colour: framedShot(shots.panel, Self.rows(shots.panel, 1142), band(300, 478, Self.nowBand))
+        case .detail: framedShot(shots.memory, Self.rows(shots.memory, 1532), band(480, 768, Self.nowBand))   // the answer and top apps (detail from row 473)
+        case .today: framedShot(shots.panel, Self.rows(shots.panel, 1142), band(470, 808, Self.nowBand))
         }
     }
 
@@ -202,6 +207,77 @@ extension DemoFrame {
                 .font(.system(size: 30)).foregroundStyle(Color(white: 0.7))
                 .multilineTextAlignment(.center)
                 .opacity(fadeIn((local - 2.3) / 0.4) * (1 - leave))
+        }
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
+    }
+}
+
+// MARK: - The 22-second cut (--v5)
+
+extension DemoFrame {
+    /// The hook is the answer itself: the question, “All good.”, and the real panel saying it, all on the
+    /// first frame (LinkedIn's thumbnail). Then the other half of the sentence: the one thing that isn't.
+    var answer5: some View {
+        let local = beatLocal, leave = beatLeaving
+        let flip = fadeIn((local - 1.7) / 0.35)
+        return ZStack(alignment: .topLeading) {
+            VStack(spacing: 6) {
+                Text("Is your Mac OK?")
+                    .font(.system(size: 34, weight: .semibold)).foregroundStyle(Color(white: 0.62))
+                ZStack {
+                    Text("All good.").font(.custom(DemoVideo.serif, size: 150)).foregroundStyle(.white)
+                        .opacity(1 - flip)
+                    VStack(spacing: 2) {
+                        Text("Or the one thing").font(.custom(DemoVideo.serif, size: 96)).foregroundStyle(.white)
+                        Text("that isn't.").font(.custom(DemoVideo.serif, size: 96)).italic().foregroundStyle(.white)
+                    }
+                    .opacity(flip)
+                    .blur(radius: 10 * (1 - flip))
+                }
+                .frame(height: 230)
+                Text("DeskBar answers in one sentence.")
+                    .font(.system(size: 32)).foregroundStyle(Color(white: 0.7))
+            }
+            .frame(width: DemoVideo.size.width)
+            .offset(y: 118)
+            .opacity(1 - leave)
+            framedShot(shots.panel, Self.rows(shots.panel, 1142), Framing.fit(6, 306, centreY: 900, maxHeight: 470))
+                .opacity((1 - flip) * (1 - leave))
+            framedShot(shots.alertPanel, Self.rows(shots.alertPanel, 1222), Framing.fit(0, 384, centreY: 900, maxHeight: 470))
+                .opacity(flip * (1 - leave))
+                .scaleEffect(0.97 + 0.03 * flip)
+        }
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+    }
+
+    /// How it shipped, in one beat: the delivery loop and the proof.
+    var process5: some View {
+        let local = beatLocal, leave = beatLeaving
+        let steps = ["Scope", "Build", "Test on real data", "Ship", "Measure", "Improve"]
+        return VStack(spacing: 40) {
+            Headline(text: "How it *shipped.*", size: 88, time: local + 0.3, leave: leave)
+            VStack(spacing: 14) {
+                ForEach(0..<3, id: \.self) { row in
+                    HStack(spacing: 14) {
+                        ForEach(0..<2, id: \.self) { col in
+                            let n = row * 2 + col
+                            let p = pop((local - 0.3 - 0.18 * Double(n)) / 0.3)
+                            HStack(spacing: 12) {
+                                Text(String(format: "%02d", n + 1)).font(.system(size: 26, weight: .semibold).monospacedDigit())
+                                    .foregroundStyle(Color(white: 0.5))
+                                Text(steps[n]).font(.system(size: 36, weight: .medium)).foregroundStyle(.white)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 26).frame(width: 420, height: 76)
+                            .background(RoundedRectangle(cornerRadius: 18).fill(Color.white.opacity(0.08)))
+                            .opacity(min(max(p * 1.5, 0), 1) * (1 - leave))
+                        }
+                    }
+                }
+            }
+            Text("Every release tested on real data before it went live.")
+                .font(.system(size: 30)).foregroundStyle(Color(white: 0.72))
+                .opacity(fadeIn((local - 1.4) / 0.35) * (1 - leave))
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
     }

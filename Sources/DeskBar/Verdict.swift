@@ -171,7 +171,7 @@ struct Stage: View {
                 }
             }
             .padding(.bottom, 2)
-            Text(problem?.word ?? "All clear")
+            Text(problem?.word ?? "All good")   // the one sentence: "All good", or the one thing that isn't
                 .font(.system(size: 17, weight: .bold))            // Title 2, emphasized
                 .lineLimit(1).minimumScaleFactor(0.8)
             Text(problem?.reason ?? quietLine)

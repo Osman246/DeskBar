@@ -16,7 +16,7 @@ import SwiftUI
 @MainActor
 enum DemoVideo {
     /// `open` is only a recording (the 3D Mac's opening, shown under the brand card).
-    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open, tour, fix, week, numbers, heard, shipped, intro4, pairs, process }
+    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open, tour, fix, week, numbers, heard, shipped, intro4, pairs, process, answer5, process5 }
 
     /// `--v2`: the 1.1 cut, about 27 s. The first film's average view was 17–18 s, right where it left the
     /// panel for the hardware, so this one stays on the panel: the opening, the new panel, a problem fixed, download.
@@ -26,8 +26,12 @@ enum DemoVideo {
     nonisolated(unsafe) static let v3 = CommandLine.arguments.contains("--v3") || v4
     /// `--v4`: before and after, about 29 s. Each change shows v1.0 on top and 1.1 below, both held long
     /// enough to read, with the feedback that led to it; then how it shipped, then download.
-    nonisolated(unsafe) static let v4 = CommandLine.arguments.contains("--v4")
+    nonisolated(unsafe) static let v4 = CommandLine.arguments.contains("--v4") || v5
+    /// `--v5`: about 22 s. The answer first (“Is your Mac OK?” “All good.”), four before-and-after changes,
+    /// how it shipped, download. The launch film's average view was 17 s, so the hook is the answer itself.
+    nonisolated(unsafe) static let v5 = CommandLine.arguments.contains("--v5")
     static var sequence: [Part] {
+        if v5 { return [.answer5, .pairs, .process5, .cta] }
         if v4 { return [.intro4, .pairs, .process, .cta] }
         if v3 { return [.week, .numbers, .heard, .fix, .shipped, .cta] }
         return v2 ? [.hook, .tour, .fix, .cta] : [.hook, .dashboard, .lid, .plug, .ports, .news, .heat, .outcome, .thesis, .brand, .cta]
@@ -35,10 +39,11 @@ enum DemoVideo {
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
     static let lengths: [Part: Double] = [.hook: 2.15, .dashboard: 12.85, .lid: 2.8, .plug: 3.0, .ports: 4.0, .news: 4.2,
-                                          .heat: 6.0, .outcome: 6.0, .thesis: 7.0, .brand: 5.0, .cta: v4 ? 4.4 : v3 ? 5.0 : 7.0, .open: 0,
+                                          .heat: 6.0, .outcome: 6.0, .thesis: 7.0, .brand: 5.0, .cta: v5 ? 4.4 : v4 ? 4.4 : v3 ? 5.0 : 7.0, .open: 0,
                                           .tour: 11.0, .fix: v3 ? 5.6 : 7.2,
                                           .week: 2.8, .numbers: 3.6, .heard: 12.4, .shipped: 3.4,
-                                          .intro4: 2.4, .pairs: 18.5, .process: 4.0]
+                                          .intro4: 2.4, .pairs: v5 ? 12.4 : 18.5, .process: 4.0,
+                                          .answer5: 4.2, .process5: 2.8]
     static var total: Double { sequence.reduce(0) { $0 + lengths[$1]! } }
     /// When each part starts, for the sound track.
     static func start(of part: Part) -> Double { sequence.prefix { $0 != part }.reduce(0) { $0 + lengths[$1]! } }
@@ -372,6 +377,8 @@ struct DemoFrame: View {
                 case .intro4: intro4
                 case .pairs: pairs
                 case .process: process
+                case .answer5: answer5
+                case .process5: process5
                 default: EmptyView()
                 }
                 if Self.productParts.contains(part) { product }
@@ -1255,7 +1262,16 @@ enum DemoSound {
         let at = DemoVideo.start(of:)
         for i in 0..<4 { pop(at(.hook) + 0.22 * Double(i) - 0.25) }
         for start in [1.45, 1.68, 1.91, 2.14] { whoosh(at(.hook) + start - 0.35, 0.4, 0.22); pop(at(.hook) + start + 0.05) }
-        if DemoVideo.v4 {
+        if DemoVideo.v5 {
+            pop(at(.answer5) + 0.05)
+            whoosh(at(.answer5) + 1.7, 0.35, 0.2)
+            for i in 0..<4 {
+                whoosh(at(.pairs) + DemoFrame.pairBeat * Double(i), 0.3, 0.16)
+                pop(at(.pairs) + DemoFrame.pairBeat * Double(i) + DemoFrame.nowDelay)
+            }
+            for i in 0..<6 { pop(at(.process5) + 0.35 + 0.18 * Double(i)) }
+            pop(at(.cta) + 0.8)
+        } else if DemoVideo.v4 {
             for i in 0..<5 {
                 whoosh(at(.pairs) + DemoFrame.pairBeat * Double(i), 0.35, 0.18)
                 pop(at(.pairs) + DemoFrame.pairBeat * Double(i) + DemoFrame.nowDelay)
@@ -1349,7 +1365,7 @@ extension DemoFrame {
     static let v2MemoryClick = 8.6, v2QuitClick = 1.7
 
     static let v2Stops: [(at: Double, card: (CGFloat, CGFloat), title: String, detail: String)] = [
-        (2.6, v2Stage, "The answer first", "“All clear”, or the one thing that isn't."),
+        (2.6, v2Stage, "The answer first", "“All good”, or the one thing that isn't."),
         (4.5, v2Stats, "Colour that means something", "Green is fine. Amber, getting close. Orange needs you."),
         (6.4, v2Today, "Today, in words", "What happened, and how it compares with your usual day."),
     ]
@@ -1458,7 +1474,7 @@ extension DemoFrame {
                            time: local - 0.15, leave: clamp((local - Self.v2QuitClick - 0.1) / 0.22))
             }
             if fixed > 0 {
-                topCaption("One click. *All clear.*", "The answer first, and the fix beside it.",
+                topCaption("One click. *All good.*", "The answer first, and the fix beside it.",
                            time: local - Self.v2QuitClick - 0.4, leave: leaving)
             }
         }
@@ -1583,7 +1599,7 @@ extension DemoFrame {
                         }
                         .frame(width: 470, alignment: .trailing)
                         // One column of labels, aligned.
-                        Text(row == 0 ? "before" : row == 1 ? "all clear" : "a problem")
+                        Text(row == 0 ? "before" : row == 1 ? "all good" : "a problem")
                             .font(.system(size: 32, weight: .medium)).foregroundStyle(Color(white: 0.78))
                             .frame(width: 220, alignment: .leading)
                     }
