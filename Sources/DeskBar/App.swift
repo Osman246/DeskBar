@@ -45,6 +45,8 @@ enum Demo {
     static let on = ProcessInfo.processInfo.environment["DESKBAR_DEMO"] != nil
     /// `DESKBAR_DEMO_ALERT=1` as well: the same demo, with memory full (for the demo video's alert shots).
     static let alert = on && ProcessInfo.processInfo.environment["DESKBAR_DEMO_ALERT"] != nil
+    /// `DESKBAR_DEMO_LOW=1` as well: disk and battery getting low (the amber "getting close" state).
+    static let low = on && ProcessInfo.processInfo.environment["DESKBAR_DEMO_LOW"] != nil
     /// 9:41, as in Apple's product shots, so no real time or date appears.
     static let date = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 9, minute: 41))!
     static var now: Date { on ? date : Date() }

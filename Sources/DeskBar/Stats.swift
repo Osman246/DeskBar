@@ -204,6 +204,10 @@ final class Stats: NSObject, ObservableObject, CLLocationManagerDelegate {
         camerasInUse = []
         bluetooth = []
         bootTime = Date().addingTimeInterval(-3 * 86_400)   // "up 3 days"
+        if Demo.low {
+            storage = (free: 18_500_000_000, total: 494_000_000_000)
+            battery = Battery(percent: 26, charging: false, onPower: false, minutesLeft: 137)
+        }
         if Demo.alert {
             // Apps + wired + compressed = used, and with cached files it stays under the 16 GB total.
             memory = Readers.Memory(used: 154 * gb / 10, total: 16 << 30, pressure: .high, app: 106 * gb / 10,

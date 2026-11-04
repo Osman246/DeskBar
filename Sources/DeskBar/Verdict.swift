@@ -237,29 +237,36 @@ struct PanelButton: View {
     }
 }
 
-/// CPU, memory, disk and battery as four bars. A tick marks where a bar becomes a problem,
-/// only where that line is a real fraction (disk under 10 GB, battery at 20%).
-/// Bars stay grey until something's wrong; then only that bar turns orange.
+/// How a stat is doing. Colour always means this and nothing else.
+enum VitalLevel {
+    /// Soft green: calm, and it doesn't compete with the verdict's green tick.
+    case fine
+    /// Soft amber, only when it's getting close to something you can act on (never CPU just being busy).
+    case close
+    /// Orange, with ⚠︎ and a word, so it never relies on colour alone.
+    case problem
+}
+
+/// CPU, memory, disk and battery as four bars. Each bar is coloured by how it's doing;
+/// a tick marks where it becomes a problem, where that's a real fraction (disk under 10 GB, battery 20%).
 struct VitalsRow: View {
     @ObservedObject var stats: Stats
     @Binding var open: String
 
     var body: some View {
         HStack(alignment: .top, spacing: 4) {
-            vital("cpu", "CPU", "\(Int(stats.cpuPercent.rounded()))", "%", cpuNote,
-                  fraction: stats.cpuPercent / 100, warn: (stats.cpuTemp ?? 0) >= 85)
-            vital("memory", "Memory", stats.memory.map { Self.number($0.used) } ?? "–", "GB",
-                  stats.memory.map { String(format: "of %.0f GB", Double($0.total) / 1_073_741_824) } ?? "",
-                  fraction: stats.memory.map { Double($0.used) / Double($0.total) } ?? 0,
-                  warn: stats.memory?.pressure == .high)
-            vital("disk", "Disk", stats.storage.map { Self.number(UInt64(max(0, $0.free))) } ?? "–", "GB", "free",
+            vital("cpu", "CPU", "cpu", "\(Int(stats.cpuPercent.rounded()))", "%", cpuNote,
+                  fraction: stats.cpuPercent / 100, level: (stats.cpuTemp ?? 0) >= 85 ? .problem : .fine)
+            vital("memory", "Memory", "memorychip", stats.memory.map { Self.number($0.used) } ?? "–", "GB", memoryNote,
+                  fraction: stats.memory.map { Double($0.used) / Double($0.total) } ?? 0, level: memoryLevel)
+            vital("disk", "Disk", "internaldrive", stats.storage.map { Self.number(UInt64(max(0, $0.free))) } ?? "–", "GB",
+                  diskLevel == .fine ? "free" : diskLevel == .close ? "free · low" : "almost full",
                   fraction: stats.storage.map { 1 - Double($0.free) / Double($0.total) } ?? 0,
-                  threshold: stats.storage.map { 1 - 10_000_000_000 / Double($0.total) },
-                  warn: (stats.storage?.free ?? .max) < 10_000_000_000)
-            vital("battery", "Battery", stats.battery.map { "\($0.percent)" } ?? "–", stats.battery == nil ? "" : "%", batteryNote,
+                  threshold: stats.storage.map { 1 - 10_000_000_000 / Double($0.total) }, level: diskLevel)
+            vital("battery", stats.battery == nil ? "Power" : "Battery", batteryIcon,
+                  stats.battery.map { "\($0.percent)" } ?? "Mains", stats.battery == nil ? "" : "%", batteryNote,
                   fraction: stats.battery.map { Double($0.percent) / 100 } ?? 1,
-                  threshold: stats.battery == nil ? nil : 0.2,
-                  warn: (stats.battery?.percent ?? 100) <= 20 && stats.battery?.onPower == false)
+                  threshold: stats.battery == nil ? nil : 0.2, level: batteryLevel)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
     }
@@ -270,24 +277,31 @@ struct VitalsRow: View {
         return gb >= 100 ? String(format: "%.0f", gb) : String(format: "%.1f", gb)
     }
 
-    private func vital(_ key: String, _ title: String, _ value: String, _ unit: String, _ note: String,
-                       fraction: Double, threshold: Double? = nil, warn: Bool) -> some View {
+    private func vital(_ key: String, _ title: String, _ icon: String, _ value: String, _ unit: String, _ note: String,
+                       fraction: Double, threshold: Double? = nil, level: VitalLevel) -> some View {
         let selected = open == key
         return Button {
             withAnimation(.easeOut(duration: 0.2)) { open = selected ? "" : key }
         } label: {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                HStack(spacing: 4) {
+                    Image(systemName: icon).font(.system(size: 10, weight: .semibold))
+                    Text(title).font(.system(size: 11))
+                }
+                .foregroundStyle(Color.secondaryText)
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text(value).font(.system(size: 15, weight: .semibold).monospacedDigit())   // Title 3
                     Text(unit).font(.system(size: 11)).foregroundStyle(Color.secondaryText)
-                    if warn {
+                    if level == .problem {
                         Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 10)).foregroundStyle(.orange)
                     }
                 }
                 .lineLimit(1).minimumScaleFactor(0.7)
-                ThresholdBar(fraction: fraction, threshold: threshold, warn: warn)
-                Text(note).font(.system(size: 11)).foregroundStyle(Color.secondaryText).lineLimit(1).minimumScaleFactor(0.85)
+                ThresholdBar(fraction: fraction, threshold: threshold, level: level)
+                Text(note)
+                    .font(.system(size: 11, weight: level == .fine ? .regular : .medium))
+                    .foregroundStyle(level == .problem ? Color.orange : level == .close ? Color.primary.opacity(0.85) : Color.secondaryText)
+                    .lineLimit(1).minimumScaleFactor(0.85)
             }
             .padding(.horizontal, 4).padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -295,7 +309,45 @@ struct VitalsRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(title) \(value) \(unit), \(note)\(warn ? ", needs attention" : "")")
+        .accessibilityLabel("\(title) \(value) \(unit), \(note)" + (level == .problem ? ", needs attention" : level == .close ? ", getting low" : ""))
+    }
+
+    private var memoryLevel: VitalLevel {
+        switch stats.memory?.pressure {
+        case .high: .problem
+        case .moderate: .close
+        default: .fine
+        }
+    }
+
+    private var memoryNote: String {
+        switch memoryLevel {
+        case .problem: return "full"
+        case .close: return "filling up"
+        case .fine: return stats.memory.map { String(format: "of %.0f GB", Double($0.total) / 1_073_741_824) } ?? ""
+        }
+    }
+
+    private var diskLevel: VitalLevel {
+        guard let free = stats.storage?.free else { return .fine }
+        return free < 10_000_000_000 ? .problem : free < 20_000_000_000 ? .close : .fine
+    }
+
+    private var batteryLevel: VitalLevel {
+        guard let b = stats.battery, !b.onPower else { return .fine }
+        return b.percent <= 20 ? .problem : b.percent < 30 ? .close : .fine
+    }
+
+    private var batteryIcon: String {
+        guard let b = stats.battery else { return "powerplug" }
+        if b.charging { return "battery.100percent.bolt" }
+        switch b.percent {
+        case 88...: return "battery.100percent"
+        case 63..<88: return "battery.75percent"
+        case 38..<63: return "battery.50percent"
+        case 13..<38: return "battery.25percent"
+        default: return "battery.0percent"
+        }
     }
 
     private var cpuNote: String {
@@ -314,17 +366,26 @@ struct VitalsRow: View {
     }
 }
 
-/// A meter with an optional tick where it becomes a problem (a bullet-graph threshold).
+/// A meter coloured by its level, with an optional tick where it becomes a problem (a bullet-graph threshold).
 struct ThresholdBar: View {
     let fraction: Double
     var threshold: Double? = nil
-    var warn = false
+    var level: VitalLevel = .fine
+    @Environment(\.colorScheme) private var scheme
+
+    private var fill: Color {
+        switch level {
+        case .fine: Color.green.opacity(scheme == .dark ? 0.55 : 0.6)
+        case .close: Color(nsColor: .systemYellow).opacity(scheme == .dark ? 0.7 : 0.85)   // quieter than a problem
+        case .problem: Color.orange
+        }
+    }
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.primary.opacity(0.12))
-                Capsule().fill(warn ? Color.orange : Color.primary.opacity(0.55))
+                Capsule().fill(fill)
                     .frame(width: geo.size.width * min(1, max(0, fraction)))
                 if let threshold {
                     Rectangle().fill(Color.primary.opacity(0.6)).frame(width: 1, height: 8)

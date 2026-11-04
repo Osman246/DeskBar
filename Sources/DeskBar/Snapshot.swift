@@ -243,7 +243,7 @@ enum Snapshot {
                 ("ports-left", "ports-left", .darkAqua), ("ports-right", "ports-right", .darkAqua),
             ]
             // With DESKBAR_DEMO_ALERT, just the two warning-state shots the demo video uses.
-            let shots = Demo.alert ? [("alert-panel", "", NSAppearance.Name.darkAqua), ("alert-memory", "memory", .darkAqua),
+            let shots = Demo.low ? [("low-panel", "", NSAppearance.Name.darkAqua), ("low-panel-light", "", .aqua)] : Demo.alert ? [("alert-panel", "", NSAppearance.Name.darkAqua), ("alert-memory", "memory", .darkAqua),
                                       ("alert-panel-light", "", .aqua)] : allShots
             for (file, open, name) in shots {
                 // Pose the 3D Mac for this shot and render it as a still.
