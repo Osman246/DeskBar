@@ -340,7 +340,7 @@ struct ThresholdBar: View {
 /// "Today": what happened earlier, in words, from the minute-by-minute history.
 struct TodayLog: View {
     @ObservedObject var stats: Stats
-    @State private var events: [Event] = []
+    @State private var report = Report.empty
 
     struct Event: Identifiable, Equatable {
         let date: Date
@@ -348,39 +348,146 @@ struct TodayLog: View {
         var id: Date { date }
     }
 
+    /// Today in a few facts, all from the minute-by-minute history.
+    struct Report: Equatable, Sendable {
+        var minutesOn = 0
+        var busiest: (name: String, minutes: Int)? = nil
+        var hottest: (degrees: Int, at: Date)? = nil
+        var downloaded: Double = 0
+        /// How today compares with the same hours on the past week's days.
+        var verdict: (symbol: String, text: String)? = nil
+        var events: [Event] = []
+
+        static let empty = Report()
+        static func == (a: Report, b: Report) -> Bool {
+            a.minutesOn == b.minutesOn && a.busiest?.name == b.busiest?.name && a.busiest?.minutes == b.busiest?.minutes
+                && a.hottest?.degrees == b.hottest?.degrees && a.downloaded == b.downloaded
+                && a.verdict?.text == b.verdict?.text && a.events == b.events
+        }
+    }
+
     var body: some View {
-        // What's wrong now is already the headline; Today is only what happened earlier.
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Today").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.secondaryText)
-            ForEach(events.prefix(2)) { event in
-                row(time: event.date.formatted(date: .omitted, time: .shortened), text: event.text, warn: false)
+        // What's wrong now is already the headline; Today is what happened earlier.
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Today").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.secondaryText)
+                Spacer()
+                if report.minutesOn > 0 {
+                    Text("on for " + Self.duration(report.minutesOn)).font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                }
             }
-            if events.isEmpty {
-                row(time: "", text: "Quiet so far", warn: false)
+            if report.minutesOn < 15 {
+                Text("Just getting started. Today's story builds up as you work.")
+                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    fact("Busiest", report.busiest?.name ?? "Nothing much",
+                         report.busiest.map { Self.duration($0.minutes) + " of CPU" } ?? "")
+                    fact("Hottest", report.hottest.map { "\($0.degrees)°C" } ?? "–",
+                         report.hottest.map { "at " + $0.at.formatted(date: .omitted, time: .shortened) } ?? "")
+                    fact("Downloaded", Format.bytes(UInt64(report.downloaded)), "since midnight")
+                }
+                if let verdict = report.verdict {
+                    Label {
+                        Text(verdict.text).font(.system(size: 12))
+                    } icon: {
+                        Image(systemName: verdict.symbol).font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                    }
+                    .labelStyle(.titleAndIcon)
+                }
+                ForEach(report.events.prefix(2)) { event in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(event.date.formatted(date: .omitted, time: .shortened))
+                            .font(.system(size: 11).monospacedDigit()).foregroundStyle(Color.secondaryText)
+                            .fixedSize().frame(minWidth: 50, alignment: .leading)
+                        Text(event.text).font(.system(size: 12)).lineLimit(1).truncationMode(.tail)
+                        Spacer(minLength: 0)
+                    }
+                }
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .task {
-            // Refresh every five minutes while the panel is open; the query is small and off the main thread.
+            // Refresh every five minutes while the panel is open; the queries are small and off the main thread.
             while !Task.isCancelled {
-                let found = await Task.detached(priority: .utility) { Self.events() }.value
-                if found != events { events = found }
+                let fresh = await Task.detached(priority: .utility) { Self.makeReport() }.value
+                if fresh != report { report = fresh }
                 try? await Task.sleep(for: .seconds(300))
             }
         }
     }
 
-    private func row(time: String, text: String, warn: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(time).font(.system(size: 11).monospacedDigit()).foregroundStyle(Color.secondaryText)
-                .fixedSize().frame(minWidth: 50, alignment: .leading)
-            Image(systemName: warn ? "exclamationmark.triangle.fill" : "circle.fill")
-                .font(.system(size: warn ? 10 : 5)).foregroundStyle(warn ? Color.orange : Color.secondaryText)
-                .frame(width: 12)
-            Text(text).font(.system(size: 13)).lineLimit(1).truncationMode(.tail)
-            Spacer(minLength: 0)
+    private func fact(_ label: String, _ value: String, _ note: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+            Text(value).font(.system(size: 13, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+            Text(note).font(.system(size: 11)).foregroundStyle(Color.secondaryText).lineLimit(1).minimumScaleFactor(0.8)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    nonisolated static func duration(_ minutes: Int) -> String {
+        minutes >= 60 ? "\(minutes / 60) h \(minutes % 60) m" : "\(minutes) min"
+    }
+
+    nonisolated static func makeReport() -> Report {
+        if Demo.on {
+            let day = Calendar.current.startOfDay(for: Demo.date)
+            return Report(minutesOn: 372, busiest: ("Final Cut Pro", 64), hottest: (78, day.addingTimeInterval(14 * 3600 + 9 * 60)),
+                          downloaded: 3.4e9, verdict: ("leaf", "Quieter than your usual day"), events: events())
+        }
+        let store = HistoryStore.shared
+        let calendar = Calendar.current
+        let now = Date()
+        let midnight = calendar.startOfDay(for: now)
+        let today = store.samples(since: midnight)
+        var report = Report(events: events())
+        report.minutesOn = today.count
+        report.downloaded = today.reduce(0) { $0 + $1.download * 60 }   // each sample is a minute's average rate
+        if let top = store.busiestApps(from: midnight, limit: 1).first, top.cpuSeconds >= 60 {
+            report.busiest = (top.name, Int(top.cpuSeconds / 60))
+        }
+        if let hot = today.filter({ $0.temperature != nil }).max(by: { $0.temperature! < $1.temperature! }) {
+            report.hottest = (Int(hot.temperature!.rounded()), hot.date)
+        }
+        guard today.count >= 15 else { return report }
+        // Without enough past days to compare, a fact about today alone, so the line is never empty.
+        if let hot = report.hottest, hot.degrees < 60 {
+            report.verdict = ("snowflake", "Cool all day: never above \(hot.degrees)°C")
+        } else if let busy = report.busiest, busy.minutes >= 60 {
+            report.verdict = ("bolt", "\(busy.name) kept it busy")
+        } else {
+            report.verdict = ("checkmark.seal", "A steady day so far")
+        }
+        // Compare with up to 14 past days over the same hours (midnight to now), so a half-day isn't
+        // judged against whole days. Needs at least three of those days to have data.
+        let todayCPU = today.map(\.cpu).reduce(0, +) / Double(today.count)
+        let todayPeak = today.compactMap(\.temperature).max() ?? 0
+        let past = store.samples(since: calendar.date(byAdding: .day, value: -14, to: midnight)!)
+        let elapsed = now.timeIntervalSince(midnight)
+        var pastCPU: [Double] = [], pastPeaks: [Double] = []
+        for back in 1...14 {
+            let dayStart = calendar.date(byAdding: .day, value: -back, to: midnight)!
+            let sameHours = past.filter { $0.date >= dayStart && $0.date < dayStart.addingTimeInterval(elapsed) }
+            guard sameHours.count >= 15 else { continue }
+            pastCPU.append(sameHours.map(\.cpu).reduce(0, +) / Double(sameHours.count))
+            pastPeaks.append(sameHours.compactMap(\.temperature).max() ?? 0)
+        }
+        guard pastCPU.count >= 3 else { return report }
+        let usual = pastCPU.reduce(0, +) / Double(pastCPU.count)
+        if todayPeak > (pastPeaks.max() ?? .infinity) + 2 {
+            report.verdict = ("flame", "Hottest it's run in two weeks")
+        } else if todayCPU > usual * 1.3 {
+            report.verdict = ("bolt", "Busier than your usual day")
+        } else if todayCPU < usual * 0.7 {
+            report.verdict = ("leaf", "Quieter than your usual day")
+        } else {
+            report.verdict = ("equal.circle", "About as busy as usual")
+        }
+        return report
     }
 
     /// Notable stretches since midnight, newest first: warm or busy for 5+ minutes, memory full, charged, battery low.
