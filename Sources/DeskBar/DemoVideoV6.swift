@@ -389,4 +389,43 @@ extension DemoFrame {
         .opacity(1 - leave)
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
     }
+
+    // MARK: The whole panel, before and now
+
+    /// v1.0's full panel beside 1.1's, at the same scale, so the difference in size and order shows at a glance.
+    var overview6: some View {
+        let local = v6Local, leave = v6Leaving
+        let oldRows = v6rows(shots.beforePanel, 1746), newRows = v6rows(shots.panel, 1142)
+        let scale: CGFloat = 1000 / oldRows, width = 680 * scale, top: CGFloat = 300
+        let oldX: CGFloat = 95, newX: CGFloat = 1080 - 95 - width
+        let before = v6spring((local - 0.2) / 0.5), now = v6spring((local - 1.0) / 0.5)
+        let shorter = Int(((1 - newRows / oldRows) * 100).rounded())
+        return ZStack(alignment: .topLeading) {
+            Headline(text: "The whole panel, *before and now.*", size: 64, time: local + 0.3, leave: leave)
+                .frame(width: DemoVideo.size.width)
+                .offset(y: 110)
+            v6tag("Before", "1.0", now: false).scaleEffect(0.8)
+                .frame(width: width).offset(x: oldX, y: top - 92)
+                .opacity(min(before * 1.6, 1))
+            v6card(shots.beforePanel, oldRows, Framing(x: oldX, y: top, scale: scale, top: 0, bottom: oldRows))
+                .offset(x: -60 * (1 - before))
+                .opacity(min(before * 1.6, 1) * (1 - 0.3 * v6in((local - 1.2) / 0.4)))
+            v6tag("Now", "1.1", now: true).scaleEffect(0.8 * (0.6 + 0.4 * now))
+                .frame(width: width).offset(x: newX, y: top - 92)
+                .opacity(min(max(now * 1.6, 0), 1))
+            v6card(shots.panel, newRows, Framing(x: newX, y: top, scale: scale, top: 0, bottom: newRows), glow: 0.35 * v6in((local - 1.2) / 0.4))
+                .scaleEffect(0.85 + 0.15 * now, anchor: .top)
+                .opacity(min(max(now * 1.6, 0), 1))
+            VStack(spacing: 6) {
+                Text("\(shorter)% shorter.").foregroundStyle(.white)
+                Text("The answer first.").foregroundStyle(Color(white: 0.75))
+            }
+            .font(.custom(DemoVideo.serif, size: 50))
+            .frame(width: width)
+            .offset(x: newX, y: top + newRows * scale + 50)
+            .opacity(v6in((local - 1.7) / 0.35))
+        }
+        .opacity(1 - leave)
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+    }
 }

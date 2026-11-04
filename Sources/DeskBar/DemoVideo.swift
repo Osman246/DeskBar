@@ -16,7 +16,7 @@ import SwiftUI
 @MainActor
 enum DemoVideo {
     /// `open` is only a recording (the 3D Mac's opening, shown under the brand card).
-    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open, tour, fix, week, numbers, heard, shipped, intro4, pairs, process, answer5, process5, open6, changes6, process6 }
+    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open, tour, fix, week, numbers, heard, shipped, intro4, pairs, process, answer5, process5, open6, changes6, process6, overview6 }
 
     /// `--v2`: the 1.1 cut, about 27 s. The first film's average view was 17–18 s, right where it left the
     /// panel for the hardware, so this one stays on the panel: the opening, the new panel, a problem fixed, download.
@@ -34,7 +34,7 @@ enum DemoVideo {
     /// a problem appears and is fixed in one click; each old design morphs into the new one.
     nonisolated(unsafe) static let v6 = CommandLine.arguments.contains("--v6")
     static var sequence: [Part] {
-        if v6 { return [.open6, .changes6, .process6, .cta] }
+        if v6 { return [.open6, .overview6, .changes6, .process6, .cta] }
         if v5 { return [.answer5, .pairs, .process5, .cta] }
         if v4 { return [.intro4, .pairs, .process, .cta] }
         if v3 { return [.week, .numbers, .heard, .fix, .shipped, .cta] }
@@ -48,7 +48,7 @@ enum DemoVideo {
                                           .week: 2.8, .numbers: 3.6, .heard: 12.4, .shipped: 3.4,
                                           .intro4: 2.4, .pairs: v5 ? 12.4 : 18.5, .process: 4.0,
                                           .answer5: 4.2, .process5: v6 ? 3.2 : 2.8,
-                                          .open6: 5.8, .changes6: 14.4, .process6: 4.0]
+                                          .open6: 5.8, .changes6: 14.4, .process6: 4.0, .overview6: 3.6]
     static var total: Double { sequence.reduce(0) { $0 + lengths[$1]! } }
     /// When each part starts, for the sound track.
     static func start(of part: Part) -> Double { sequence.prefix { $0 != part }.reduce(0) { $0 + lengths[$1]! } }
@@ -391,6 +391,7 @@ struct DemoFrame: View {
                 case .open6: open6
                 case .changes6: changes6
                 case .process6: process6
+                case .overview6: overview6
                 default: EmptyView()
                 }
                 if Self.productParts.contains(part) { product }
@@ -1302,6 +1303,7 @@ enum DemoSound {
                 pop(b + DemoFrame.v6Morph + 0.35)
             }
             click(at(.changes6) + DemoFrame.v6DetailPointer(DemoFrame.v6Beat * 2 + 1).1)
+            pop(at(.overview6) + 0.3); pop(at(.overview6) + 1.1)
             for (i, passed) in DemoFrame.v6StepPassed.enumerated() { i == 2 ? chime(at(.process6) + passed) : pop(at(.process6) + passed) }
             pop(at(.process6) + DemoFrame.v6StepPassed[3] + 0.1)
             pop(at(.cta) + 0.8)
