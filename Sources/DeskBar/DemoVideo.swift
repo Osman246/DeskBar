@@ -16,7 +16,7 @@ import SwiftUI
 @MainActor
 enum DemoVideo {
     /// `open` is only a recording (the 3D Mac's opening, shown under the brand card).
-    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open, tour, fix, week, numbers, heard, shipped, intro4, pairs, process, answer5, process5 }
+    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open, tour, fix, week, numbers, heard, shipped, intro4, pairs, process, answer5, process5, open6, changes6 }
 
     /// `--v2`: the 1.1 cut, about 27 s. The first film's average view was 17–18 s, right where it left the
     /// panel for the hardware, so this one stays on the panel: the opening, the new panel, a problem fixed, download.
@@ -29,8 +29,12 @@ enum DemoVideo {
     nonisolated(unsafe) static let v4 = CommandLine.arguments.contains("--v4") || v5
     /// `--v5`: about 22 s. The answer first (“Is your Mac OK?” “All good.”), four before-and-after changes,
     /// how it shipped, download. The launch film's average view was 17 s, so the hook is the answer itself.
-    nonisolated(unsafe) static let v5 = CommandLine.arguments.contains("--v5")
+    nonisolated(unsafe) static let v5 = CommandLine.arguments.contains("--v5") || v6
+    /// `--v6`: about 26 s, acted out rather than read: the pointer clicks, the answer lands ("All good."),
+    /// a problem appears and is fixed in one click; each old design is crossed off and replaced.
+    nonisolated(unsafe) static let v6 = CommandLine.arguments.contains("--v6")
     static var sequence: [Part] {
+        if v6 { return [.open6, .changes6, .process5, .cta] }
         if v5 { return [.answer5, .pairs, .process5, .cta] }
         if v4 { return [.intro4, .pairs, .process, .cta] }
         if v3 { return [.week, .numbers, .heard, .fix, .shipped, .cta] }
@@ -43,7 +47,8 @@ enum DemoVideo {
                                           .tour: 11.0, .fix: v3 ? 5.6 : 7.2,
                                           .week: 2.8, .numbers: 3.6, .heard: 12.4, .shipped: 3.4,
                                           .intro4: 2.4, .pairs: v5 ? 12.4 : 18.5, .process: 4.0,
-                                          .answer5: 4.2, .process5: 2.8]
+                                          .answer5: 4.2, .process5: v6 ? 3.2 : 2.8,
+                                          .open6: 5.8, .changes6: 13.0]
     static var total: Double { sequence.reduce(0) { $0 + lengths[$1]! } }
     /// When each part starts, for the sound track.
     static func start(of part: Part) -> Double { sequence.prefix { $0 != part }.reduce(0) { $0 + lengths[$1]! } }
@@ -124,7 +129,11 @@ enum DemoVideo {
         writer.startSession(atSourceTime: .zero)
 
         let frames = Int(total * fps)
-        let stills = Set(stride(from: 0.0, to: total, by: 1.2).map { Int($0 * fps) })
+        // `--stills <seconds>`: how often to save a review frame (1.2 s by default).
+        var every = 1.2
+        if let i = CommandLine.arguments.firstIndex(of: "--stills"), i + 1 < CommandLine.arguments.count,
+           let value = Double(CommandLine.arguments[i + 1]) { every = value }
+        let stills = Set(stride(from: 0.0, to: total, by: every).map { Int($0 * fps) })
         for index in 0..<frames {
             let t = Double(index) / fps
             let view = DemoFrame(t: t, clips: clips, shots: shots)
@@ -379,6 +388,8 @@ struct DemoFrame: View {
                 case .process: process
                 case .answer5: answer5
                 case .process5: process5
+                case .open6: open6
+                case .changes6: changes6
                 default: EmptyView()
                 }
                 if Self.productParts.contains(part) { product }
@@ -531,6 +542,7 @@ struct DemoFrame: View {
         switch part {
         case .hook, .brand, .cta: false
         case .dashboard, .tour: local > 0.04
+        case .open6: local > Self.v6MenuClick
         default: true
         }
     }
@@ -544,7 +556,7 @@ struct DemoFrame: View {
             }
             Spacer()
             HStack(spacing: 7) {
-                if DemoVideo.v3 && part == .fix && local < Self.v2QuitClick + 0.3 {
+                if (DemoVideo.v3 && part == .fix && local < Self.v2QuitClick + 0.3) || Self.v6Warning(part, local) {
                     Image(systemName: "exclamationmark.triangle")
                     Text("Memory full")
                 } else {
@@ -554,6 +566,8 @@ struct DemoFrame: View {
             .font(.system(size: 26, weight: .medium))
             .frame(minWidth: 84).padding(.horizontal, 12).frame(height: 42)
             .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(panelOpen ? 0.22 : 0)))
+            .background(RoundedRectangle(cornerRadius: 9).fill(Color.orange.opacity(Self.v6WarningGlow(part, local))))
+            .offset(x: Self.v6Shake(part, local))
             Image(systemName: "wifi").font(.system(size: 24)).frame(width: 64)
             Image(systemName: "battery.75percent").font(.system(size: 27)).frame(width: 72)
             Text(Demo.now.formatted(.dateTime.weekday(.abbreviated).hour().minute()))   // matches the 3D Mac's screen
@@ -591,6 +605,15 @@ struct DemoFrame: View {
             let target = Self.tourFraming(local).point(Self.v2MemoryTile.x, Self.v2MemoryTile.y)
             return (glide(CGPoint(x: 540, y: 1180), target, ease((local - (Self.v2MemoryClick - 0.6)) / 0.5)),
                     clicking(local - Self.v2MemoryClick), target)
+        case .open6 where local < Self.v6MenuClick + 0.5:
+            return (glide(CGPoint(x: 760, y: 420), Self.itemCentre, ease((local - 0.1) / 0.45)), clicking(local - Self.v6MenuClick), Self.itemCentre)
+        case .open6 where local > Self.v6QuitClick - 0.9 && local < Self.v6QuitClick + 0.8:
+            let target = Self.v6StageFraming.point(Self.v2QuitButton.x, Self.v2QuitButton.y)
+            return (glide(CGPoint(x: 700, y: 1220), target, ease((local - (Self.v6QuitClick - 0.75)) / 0.5)),
+                    clicking(local - Self.v6QuitClick), target)
+        case .changes6 where Self.v6DetailClickActive(local):
+            let (target, click) = Self.v6DetailPointer(local)
+            return (glide(CGPoint(x: 560, y: 1230), target, ease((local - (click - 0.6)) / 0.45)), clicking(local - click), target)
         case .heard where Self.heardIndex(local) == 3 && local > Self.heardClick - 0.8 && local < Self.heardClick + 0.9:
             let f = Self.heardMemoryFraming(local)
             let target = f.point(Self.v2MemoryTile.x, Self.v2MemoryTile.y)
@@ -625,7 +648,10 @@ struct DemoFrame: View {
                      : part == .outcome ? 1 - clamp((local - 0.9) / 0.3)
                      : part == .tour ? 1 - clamp((local - Self.v2MemoryClick - 0.5) / 0.3)
                      : part == .fix ? 1 - clamp((local - Self.v2QuitClick - 0.5) / 0.3)
-                     : part == .heard ? 1 - clamp((local - Self.heardClick - 0.5) / 0.3) : 1)
+                     : part == .heard ? 1 - clamp((local - Self.heardClick - 0.5) / 0.3)
+                     : part == .open6 ? (local < Self.v6MenuClick + 0.5 ? 1 - clamp((local - Self.v6MenuClick - 0.25) / 0.25)
+                                                                            : 1 - clamp((local - Self.v6QuitClick - 0.45) / 0.3))
+                     : part == .changes6 ? 1 - clamp((local - Self.v6DetailPointer(local).1 - 0.5) / 0.3) : 1)
         }
     }
 
@@ -1262,7 +1288,22 @@ enum DemoSound {
         let at = DemoVideo.start(of:)
         for i in 0..<4 { pop(at(.hook) + 0.22 * Double(i) - 0.25) }
         for start in [1.45, 1.68, 1.91, 2.14] { whoosh(at(.hook) + start - 0.35, 0.4, 0.22); pop(at(.hook) + start + 0.05) }
-        if DemoVideo.v5 {
+        if DemoVideo.v6 {
+            click(at(.open6) + DemoFrame.v6MenuClick)
+            whoosh(at(.open6) + DemoFrame.v6MenuClick + 0.05, 0.35, 0.22)
+            pop(at(.open6) + DemoFrame.v6MenuClick + 0.45)
+            thud(at(.open6) + DemoFrame.v6WarnAt)
+            click(at(.open6) + DemoFrame.v6QuitClick)
+            chime(at(.open6) + DemoFrame.v6QuitClick + 0.3)
+            for i in 0..<4 {
+                let b = at(.changes6) + DemoFrame.v6Beat * Double(i)
+                whoosh(b + DemoFrame.v6Strike, 0.25, 0.16)
+                pop(b + DemoFrame.v6NewIn + 0.1)
+            }
+            click(at(.changes6) + DemoFrame.v6DetailPointer(DemoFrame.v6Beat * 2 + 1).1)
+            for i in 0..<6 { pop(at(.process5) + 0.35 + 0.18 * Double(i)) }
+            pop(at(.cta) + 0.8)
+        } else if DemoVideo.v5 {
             pop(at(.answer5) + 0.05)
             whoosh(at(.answer5) + 1.7, 0.35, 0.2)
             for i in 0..<4 {
