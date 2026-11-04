@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // The four detail views, opened from the stats row. Each answers first: what the number means
 // and why, then the fix, the top three apps, and a few facts. History lives in the window.
@@ -53,11 +54,7 @@ struct AppUsageRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                if let icon = NSRunningApplication(processIdentifier: pid)?.icon {
-                    Image(nsImage: icon).resizable().frame(width: 14, height: 14)
-                } else {
-                    Image(systemName: "app").font(.system(size: 11)).foregroundStyle(Color.secondaryText).frame(width: 14)
-                }
+                Image(nsImage: Self.icon(name: name, pid: pid)).resizable().frame(width: 14, height: 14)
                 Text(name).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 8)
                 Text(value).font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
@@ -73,6 +70,17 @@ struct AppUsageRow: View {
             }
             Bar(fraction: fraction, tint: Color.primary.opacity(0.45), height: 3).padding(.leading, 22)
         }
+    }
+
+    /// The running app's icon; else the app of that name in /Applications (background helpers, demo
+    /// mode); else the standard app icon, never an empty square.
+    static func icon(name: String, pid: pid_t) -> NSImage {
+        if let icon = NSRunningApplication(processIdentifier: pid)?.icon { return icon }
+        for folder in ["/Applications", "/System/Applications", "/System/Applications/Utilities"] {
+            let path = "\(folder)/\(name).app"
+            if FileManager.default.fileExists(atPath: path) { return NSWorkspace.shared.icon(forFile: path) }
+        }
+        return NSWorkspace.shared.icon(for: .application)
     }
 }
 

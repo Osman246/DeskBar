@@ -16,13 +16,19 @@ import SwiftUI
 @MainActor
 enum DemoVideo {
     /// `open` is only a recording (the 3D Mac's opening, shown under the brand card).
-    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open }
+    enum Part: CaseIterable { case hook, dashboard, lid, plug, ports, news, heat, outcome, thesis, brand, cta, open, tour, fix }
 
-    static let sequence: [Part] = [.hook, .dashboard, .lid, .plug, .ports, .news, .heat, .outcome, .thesis, .brand, .cta]
+    /// `--v2`: the 1.1 cut, about 27 s. The first film's average view was 17–18 s, right where it left the
+    /// panel for the hardware, so this one stays on the panel: the opening, the new panel, a problem fixed, download.
+    nonisolated(unsafe) static let v2 = CommandLine.arguments.contains("--v2")
+    static var sequence: [Part] {
+        v2 ? [.hook, .tour, .fix, .cta] : [.hook, .dashboard, .lid, .plug, .ports, .news, .heat, .outcome, .thesis, .brand, .cta]
+    }
     static let size = CGSize(width: 1080, height: 1350)
     static let fps = 30.0
     static let lengths: [Part: Double] = [.hook: 2.15, .dashboard: 12.85, .lid: 2.8, .plug: 3.0, .ports: 4.0, .news: 4.2,
-                                          .heat: 6.0, .outcome: 6.0, .thesis: 7.0, .brand: 5.0, .cta: 7.0, .open: 0]
+                                          .heat: 6.0, .outcome: 6.0, .thesis: 7.0, .brand: 5.0, .cta: 7.0, .open: 0,
+                                          .tour: 11.0, .fix: 7.2]
     static var total: Double { sequence.reduce(0) { $0 + lengths[$1]! } }
     /// When each part starts, for the sound track.
     static func start(of part: Part) -> Double { sequence.prefix { $0 != part }.reduce(0) { $0 + lengths[$1]! } }
@@ -65,7 +71,11 @@ enum DemoVideo {
         let mac = model.mac
         await mac.waitUntilLoaded()
         let clips = await record(mac)
-        let images = FileManager.default.currentDirectoryPath + "/docs/images/"
+        // `--images <dir>`: the panel screenshots to film (docs/images by default).
+        var images = FileManager.default.currentDirectoryPath + "/docs/images/"
+        if let i = CommandLine.arguments.firstIndex(of: "--images"), i + 1 < CommandLine.arguments.count {
+            images = CommandLine.arguments[i + 1] + "/"
+        }
         let shots = Shots(panel: NSImage(contentsOfFile: images + "panel-dark.png"),
                           memory: NSImage(contentsOfFile: images + "memory.png"),
                           disk: NSImage(contentsOfFile: images + "disk.png"),
@@ -333,6 +343,8 @@ struct DemoFrame: View {
                 case .thesis: thesis
                 case .brand: brand
                 case .cta: callToAction
+                case .tour: tour
+                case .fix: fix
                 default: EmptyView()
                 }
                 if Self.productParts.contains(part) { product }
@@ -370,6 +382,15 @@ struct DemoFrame: View {
     /// four places you'd check today pile up, then fly into the one menu bar item.
     private var hook: some View {
         ZStack(alignment: .topLeading) {
+            if DemoVideo.v2 {
+                // The thumbnail LinkedIn shows: same question as the first film, marked as new.
+                Text("NEW IN DESKBAR 1.1")
+                    .font(.system(size: 26, weight: .semibold)).tracking(8)
+                    .foregroundStyle(Color(white: 0.6))
+                    .frame(width: DemoVideo.size.width)
+                    .offset(y: 84)
+                    .opacity(1 - clamp((local - 1.2) / 0.3))
+            }
             Text("Is your Mac OK?")
                 .font(serif(104))
                 .tracking(-1.5)
@@ -475,7 +496,7 @@ struct DemoFrame: View {
     private var panelOpen: Bool {
         switch part {
         case .hook, .brand, .cta: false
-        case .dashboard: local > 0.04
+        case .dashboard, .tour: local > 0.04
         default: true
         }
     }
@@ -526,6 +547,15 @@ struct DemoFrame: View {
             return (glide(start, tiles[i], ease((local - (clicks[i] - 0.55)) / 0.45)), clicking(local - clicks[i]), tiles[i])
         case .outcome where local < 1.2:
             return (glide(CGPoint(x: 560, y: 1150), Self.topBanner, ease(local / 0.5)), clicking(local - 0.55), Self.topBanner)
+        case .tour where local < 1.4:
+            return (glide(CGPoint(x: 700, y: 160), Self.itemCentre, ease(local / 0.06)), clicking(local - 0.04), Self.itemCentre)
+        case .tour where local > Self.v2MemoryClick - 0.8 && local < Self.v2MemoryClick + 1.0:
+            let target = Self.tourFraming(local).point(Self.v2MemoryTile.x, Self.v2MemoryTile.y)
+            return (glide(CGPoint(x: 540, y: 1180), target, ease((local - (Self.v2MemoryClick - 0.6)) / 0.5)),
+                    clicking(local - Self.v2MemoryClick), target)
+        case .fix where local > 0.9 && local < 2.6:
+            let target = Self.fixProblemFraming.point(Self.v2QuitButton.x, Self.v2QuitButton.y)
+            return (glide(CGPoint(x: 620, y: 1180), target, ease((local - 1.0) / 0.55)), clicking(local - Self.v2QuitClick), target)
         default: return nil
         }
     }
@@ -548,7 +578,10 @@ struct DemoFrame: View {
                     .offset(x: pointer.at.x + 4, y: pointer.at.y + 4)
             }
             .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
-            .opacity(part == .dashboard && local < 1.4 ? 1 - clamp((local - 1.0) / 0.3) : part == .outcome ? 1 - clamp((local - 0.9) / 0.3) : 1)
+            .opacity((part == .dashboard || part == .tour) && local < 1.4 ? 1 - clamp((local - 1.0) / 0.3)
+                     : part == .outcome ? 1 - clamp((local - 0.9) / 0.3)
+                     : part == .tour ? 1 - clamp((local - Self.v2MemoryClick - 0.5) / 0.3)
+                     : part == .fix ? 1 - clamp((local - Self.v2QuitClick - 0.5) / 0.3) : 1)
         }
     }
 
@@ -864,11 +897,12 @@ struct DemoFrame: View {
 
     /// A screenshot layer, revealed downward from the bottom of the tiles as `wipe` goes 0 → 1
     /// (1 shows it all).
-    @ViewBuilder private func expanding(_ image: NSImage?, _ height: CGFloat, scale: CGFloat, wipe: Double) -> some View {
+    @ViewBuilder private func expanding(_ image: NSImage?, _ height: CGFloat, scale: CGFloat, wipe: Double,
+                                        from start: CGFloat = 780) -> some View {
         if wipe >= 1 {
             panelImage(image, height, scale: scale)
         } else if wipe > 0 {
-            let edge = (780 + (height - 780) * wipe) * scale
+            let edge = (start + (height - start) * wipe) * scale
             panelImage(image, height, scale: scale)
                 .mask(alignment: .top) {
                     LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.92), .init(color: .clear, location: 1)],
@@ -1185,19 +1219,31 @@ enum DemoSound {
         let at = DemoVideo.start(of:)
         for i in 0..<4 { pop(at(.hook) + 0.22 * Double(i) - 0.25) }
         for start in [1.45, 1.68, 1.91, 2.14] { whoosh(at(.hook) + start - 0.35, 0.4, 0.22); pop(at(.hook) + start + 0.05) }
-        click(at(.dashboard) + 0.04)
-        whoosh(at(.dashboard) + 0.1, 0.35, 0.25)
-        whoosh(at(.dashboard) + 2.2, 0.8, 0.3)
-        for offset in [4.2, 5.3, 6.4, 7.5] { whoosh(at(.dashboard) + offset, 0.45, 0.12) }
-        for offset in DemoFrame.tileClicks { click(at(.dashboard) + offset) }
-        for part in [DemoVideo.Part.lid, .plug, .ports, .heat] { whoosh(at(part), 0.3, 0.22) }
-        thud(at(.news) + 0.1)
-        for offset in [0.6, 1.9, 3.2, 4.5] { chime(at(.heat) + offset) }
-        click(at(.outcome) + 0.55)
-        whoosh(at(.outcome) + 0.65, 0.45, 0.25)
-        chime(at(.thesis) + 4.5)
-        swell(at(.brand), 3.0)
-        pop(at(.cta) + 0.8)
+        if DemoVideo.v2 {
+            click(at(.tour) + 0.04)
+            whoosh(at(.tour) + 0.1, 0.35, 0.25)
+            whoosh(at(.tour) + 2.2, 0.8, 0.3)
+            for stop in DemoFrame.v2Stops.dropFirst() { whoosh(at(.tour) + stop.at, 0.45, 0.12) }
+            click(at(.tour) + DemoFrame.v2MemoryClick)
+            whoosh(at(.fix), 0.3, 0.22)
+            click(at(.fix) + DemoFrame.v2QuitClick)
+            chime(at(.fix) + DemoFrame.v2QuitClick + 0.35)
+            pop(at(.cta) + 0.8)
+        } else {
+            click(at(.dashboard) + 0.04)
+            whoosh(at(.dashboard) + 0.1, 0.35, 0.25)
+            whoosh(at(.dashboard) + 2.2, 0.8, 0.3)
+            for offset in [4.2, 5.3, 6.4, 7.5] { whoosh(at(.dashboard) + offset, 0.45, 0.12) }
+            for offset in DemoFrame.tileClicks { click(at(.dashboard) + offset) }
+            for part in [DemoVideo.Part.lid, .plug, .ports, .heat] { whoosh(at(part), 0.3, 0.22) }
+            thud(at(.news) + 0.1)
+            for offset in [0.6, 1.9, 3.2, 4.5] { chime(at(.heat) + offset) }
+            click(at(.outcome) + 0.55)
+            whoosh(at(.outcome) + 0.65, 0.45, 0.25)
+            chime(at(.thesis) + 4.5)
+            swell(at(.brand), 3.0)
+            pop(at(.cta) + 0.8)
+        }
         for i in samples.indices { samples[i] = max(-0.9, min(0.9, samples[i])) }
 
         let folder = video.deletingLastPathComponent()
@@ -1233,5 +1279,136 @@ enum DemoSound {
             _ = try FileManager.default.replaceItemAt(video, withItemAt: muxed)
         } catch { print("Sound: mux failed: \(error)") }
         [wav, m4a].forEach { try? FileManager.default.removeItem(at: $0) }
+    }
+}
+
+// MARK: - The 1.1 cut (--v2)
+
+extension DemoFrame {
+    /// Rows of the 1.1 panel's 680-wide screenshots (measured from its section dividers).
+    static let v2Stage: (CGFloat, CGFloat) = (6, 306), v2Stats: (CGFloat, CGFloat) = (300, 478)
+    static let v2Today: (CGFloat, CGFloat) = (470, 808)
+    /// Where the Memory detail ends once open, the Memory column's centre, and the problem shot's
+    /// Quit Safari button (all in screenshot pixels).
+    static let v2MemoryEnd: CGFloat = 862
+    static let v2MemoryTile = CGPoint(x: 261, y: 392)
+    static let v2QuitButton = CGPoint(x: 118, y: 324)
+    static let v2MemoryClick = 8.6, v2QuitClick = 1.7
+
+    static let v2Stops: [(at: Double, card: (CGFloat, CGFloat), title: String, detail: String)] = [
+        (2.6, v2Stage, "The answer first", "“All clear”, or the one thing that isn't."),
+        (4.5, v2Stats, "Colour that means something", "Green is fine. Amber, getting close. Orange needs you."),
+        (6.4, v2Today, "Today, in words", "What happened, and how it compares with your usual day."),
+    ]
+
+    private static func px(_ image: NSImage?, _ fallback: CGFloat) -> CGFloat {
+        CGFloat(image?.representations.first?.pixelsHigh ?? Int(fallback))
+    }
+
+    /// Where the panel is during the tour: it drops under the item, then the camera frames each section
+    /// whole; at the end it frames the stats and grows down as Memory opens.
+    static func tourFraming(_ local: Double) -> Framing {
+        let drop = springy((local - 0.08) / 0.45)
+        let dropped = Framing(x: 612, y: 64 - 24 * (1 - drop), scale: 428 / 680, top: 0, bottom: 1142)
+        let stops = v2Stops
+        let index = stops.lastIndex { local >= $0.at } ?? -1
+        var target: Framing
+        if index < 0 {
+            target = Framing.fit(stops[0].card.0, stops[0].card.1)
+        } else {
+            let from = index == 0 ? stops[0].card : stops[index - 1].card
+            target = Framing.mix(Framing.fit(from.0, from.1), Framing.fit(stops[index].card.0, stops[index].card.1),
+                                 ease((local - stops[index].at) / 0.55))
+        }
+        let detailStart = v2MemoryClick - 0.9
+        if local >= detailStart {
+            let bottom = v2Stats.1 + (v2MemoryEnd - v2Stats.1) * CGFloat(ease((local - v2MemoryClick - 0.08) / 0.45))
+            target = Framing.mix(target, Framing.fit(v2Stats.0, bottom), ease((local - detailStart) / 0.55))
+        }
+        return Framing.mix(dropped, target, ease((local - 2.2) / 0.8))
+    }
+
+    var tour: some View {
+        let stops = Self.v2Stops
+        let index = stops.lastIndex { local >= $0.at } ?? 0
+        let f = Self.tourFraming(local)
+        let wipe = ease((local - Self.v2MemoryClick - 0.08) / 0.45)
+        let label = local < stops[0].at ? 0 : easeOut((local - stops[index].at - 0.15) / 0.35)
+        let detailStart = Self.v2MemoryClick - 0.9
+        return ZStack(alignment: .topLeading) {
+            framed([(shots.panel, Self.px(shots.panel, 1142), 1)], f, radius: 14 + 8 * CGFloat(ease((local - 2.2) / 0.8)))
+                .overlay {
+                    framed([(shots.memory, Self.px(shots.memory, 1532), 1)], f, radius: 22)
+                        .mask(alignment: .topLeading) {
+                            // Memory's detail unrolls downward from the bottom of the stats row.
+                            Rectangle()
+                                .frame(width: DemoVideo.size.width,
+                                       height: max(0, f.point(0, Self.v2Stats.1 + (Self.v2MemoryEnd - Self.v2Stats.1) * CGFloat(wipe)).y + 40))
+                                .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+                        }
+                        .opacity(wipe > 0 ? 1 : 0)
+                }
+                .opacity(clamp(springy((local - 0.08) / 0.45) * 2))
+            // Before the fly-in: what it is.
+            VStack(alignment: .leading, spacing: 16) {
+                Kicker(text: "DeskBar 1.1", time: local - 0.3, size: 28)
+                Headline(text: "One click.|*One answer.*", size: 84, time: local - 0.4, alignment: .leading)
+                Text("Now with the fix\nright beside it.")
+                    .font(.system(size: 34))
+                    .foregroundStyle(Color(white: 0.66))
+                    .opacity(easeOut((local - 0.95) / 0.35))
+            }
+            .offset(x: 60, y: 430)
+            .opacity(1 - clamp((local - 2.0) / 0.3))
+            if local > 2.5 && local < detailStart {
+                topCaption("Rebuilt around *one answer.*", "Section by section.", time: local - 2.5,
+                           leave: clamp((local - (detailStart - 0.25)) / 0.22))
+            } else if local >= detailStart {
+                topCaption("Detail *on request.*", "What it means, what's using it, and the fix.", time: local - detailStart, leave: leaving)
+            }
+            if local >= stops[0].at && local < detailStart {
+                let stop = stops[index]
+                VStack(spacing: 6) {
+                    HStack(spacing: 14) {
+                        Text(String(format: "%02d / %02d", index + 1, stops.count)).monospacedDigit().foregroundStyle(Color(white: 0.5))
+                        Text(stop.title).font(serif(44)).foregroundStyle(.white)
+                    }
+                    .font(.system(size: 24, weight: .semibold))
+                    Text(stop.detail).font(.system(size: 30)).foregroundStyle(Color(white: 0.68))
+                }
+                .frame(width: DemoVideo.size.width)
+                .offset(y: 1110)
+                .blur(radius: 8 * (1 - label))
+                .opacity(label * (1 - clamp((local - (detailStart - 0.3)) / 0.3)))
+            }
+        }
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
+    }
+
+    /// The problem shot: the stage and stats of the memory-full panel.
+    static let fixProblemFraming = Framing.fit(0, 560, centreY: 770, maxHeight: 600)   // below a two-line headline
+
+    /// Something's wrong, the fix is in the answer itself: click Quit Safari, and it's all clear.
+    var fix: some View {
+        let fixed = easeOut((local - Self.v2QuitClick - 0.25) / 0.45)
+        let glow = local > Self.v2QuitClick + 0.25 ? 1 - clamp((local - Self.v2QuitClick - 0.6) / 0.9) : 0
+        let appear = easeOut(local / 0.35)
+        let calm = Framing.fit(0, 478, centreY: 770, maxHeight: 600)
+        return ZStack(alignment: .topLeading) {
+            framed([(shots.alertPanel, Self.px(shots.alertPanel, 1222), 1)], Self.fixProblemFraming)
+                .opacity(appear * (1 - fixed))
+                .scaleEffect(0.97 + 0.03 * appear)
+            framed([(shots.panel, Self.px(shots.panel, 1142), 1)], calm, glow: glow)
+                .opacity(fixed * (1 - leaving))
+            if fixed < 1 {
+                topCaption("Something wrong?|*The fix is right there.*", "Memory full: Safari is using 6.0 GB.",
+                           time: local - 0.15, leave: clamp((local - Self.v2QuitClick - 0.1) / 0.22))
+            }
+            if fixed > 0 {
+                topCaption("One click. *All clear.*", "The answer first, and the fix beside it.",
+                           time: local - Self.v2QuitClick - 0.4, leave: leaving)
+            }
+        }
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
     }
 }
