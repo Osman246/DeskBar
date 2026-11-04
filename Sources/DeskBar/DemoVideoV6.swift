@@ -12,7 +12,19 @@ extension DemoFrame {
     static let v6CalmFraming = Framing.fit(6, 306, centreY: 860, maxHeight: 470)
 
     // Timing of each change (seconds into its beat).
-    static let v6Beat = 3.25, v6Morph = 0.9, v6NewIn = 1.35
+    static let v6Beat = 3.6, v6Morph = 1.3, v6NewIn = 1.75
+    static let v6RowFraming = Framing.fit(300, 478, centreY: 780, maxHeight: 560, maxWidth: 1000)
+    static let v6TodayFraming = Framing.fit(470, 808, centreY: 780, maxHeight: 560, maxWidth: 1000)
+
+    /// The bottom edge of each change's new design, so its lesson sits right under it.
+    static func v6NewBottom(_ i: Int, _ local: Double) -> CGFloat {
+        switch i {
+        case 0: return DemoVideo.size.height / 2 + 189
+        case 1: return v6RowFraming.rect.maxY
+        case 2: return v6DetailFraming(local).rect.maxY
+        default: return v6TodayFraming.rect.maxY
+        }
+    }
 
     static func v6Warning(_ part: DemoVideo.Part, _ local: Double) -> Bool {
         DemoVideo.v6 && part == .open6 && local >= v6WarnAt && local < v6QuitClick + 0.15
@@ -45,7 +57,7 @@ extension DemoFrame {
     static func v6DetailFraming(_ local: Double) -> Framing {
         let click = 2 * v6Beat + v6NewIn + 0.6
         let open = v6ease((local - click - 0.08) / 0.45)
-        return Framing.fit(300, 478 + (768 - 478) * CGFloat(open), centreY: 760, maxHeight: 560)
+        return Framing.fit(300, 478 + (768 - 478) * CGFloat(open), centreY: 820, maxHeight: 640, maxWidth: 1000)
     }
 
     private static func v6ease(_ x: Double) -> Double {
@@ -177,11 +189,11 @@ extension DemoFrame {
         let i = min(3, Int(local / Self.v6Beat))
         let beat = local - Double(i) * Self.v6Beat
         let out = i < 3 ? min(max((beat - (Self.v6Beat - 0.22)) / 0.22, 0), 1) : v6Leaving
-        let items: [(feedback: String, lesson: String, skill: String)] = [
-            ("“39° in the menu bar isn't useful.”", "Quiet when fine. *Speaks when it isn't.*", "Act on feedback, fast"),
-            ("“There's a lot to take in.”", "Colour should mean *one thing.*", "Cut what doesn't earn its place"),
-            ("“Two clicks is fine.”", "Detail in plain words, *one click away.*", "Detail on demand, not by default"),
-            ("New: what happened today", "Report the day, *not just the moment.*", "Turn data into something people use"),
+        let items: [(feedback: String, lesson: String)] = [
+            ("“39° in the menu bar isn't useful.”", "Quiet when fine. *Speaks when it isn't.*"),
+            ("“There's a lot to take in.”", "Colour should mean *one thing.*"),
+            ("“Two clicks is fine.”", "Detail in plain words, *one click away.*"),
+            ("New: what happened today", "Report the day, *not just the moment.*"),
         ]
         let item = items[i]
         // The old shrinks up and away while the new grows out of the same spot.
@@ -196,16 +208,18 @@ extension DemoFrame {
             .frame(width: DemoVideo.size.width)
             .offset(y: 96)
             .opacity(v6in(beat / 0.25) * (1 - out))
+            // Big, unmissable tags: what it was, then what it is.
             ZStack {
-                Text("BEFORE · 1.0")
-                    .font(.system(size: 22, weight: .bold)).tracking(5).foregroundStyle(Color(white: 0.55))
-                    .opacity(v6in(beat / 0.25) * (1 - shrink))
-                Text("NOW · 1.1")
-                    .font(.system(size: 22, weight: .bold)).tracking(5).foregroundStyle(.white)
-                    .opacity(min(max(grow * 1.6, 0), 1) * (1 - out))
+                let before = v6spring(beat / 0.45), now = v6spring((beat - Self.v6Morph - 0.25) / 0.45)
+                v6tag("Before", "1.0", now: false)
+                    .scaleEffect((0.6 + 0.4 * before) * (1 - 0.3 * shrink))
+                    .opacity(min(before * 1.6, 1) * (1 - min(shrink * 2.5, 1)))
+                v6tag("Now", "1.1", now: true)
+                    .scaleEffect(0.6 + 0.4 * now)
+                    .opacity(min(max(now * 1.6, 0), 1) * (1 - out))
             }
             .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
-            .offset(y: -300)
+            .offset(y: -240)
             // Before: shrinks up and fades.
             v6old(i)
                 .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
@@ -215,21 +229,12 @@ extension DemoFrame {
             // Now: grows out of the same spot (the menu bar's two states one after the other).
             v6new(i, local, beat)
                 .frame(width: DemoVideo.size.width, height: DemoVideo.size.height)
-                .scaleEffect(i == 0 ? 1 : 0.4 + 0.6 * grow)
-                .opacity((i == 0 ? 1 : min(max(grow * 1.6, 0), 1)) * (1 - out))
-            // The lesson and the skill.
-            VStack(spacing: 18) {
-                Headline(text: item.lesson, size: 58, time: beat - Self.v6NewIn - 0.2, leave: out)
-                HStack(spacing: 12) {
-                    Image(systemName: "checkmark.seal.fill").foregroundStyle(Color.green.opacity(0.85))
-                    Text(item.skill).foregroundStyle(.white)
-                }
-                .font(.system(size: 30, weight: .semibold))
-                .scaleEffect(0.8 + 0.2 * v6spring((beat - Self.v6NewIn - 0.7) / 0.4))
-                .opacity(v6in((beat - Self.v6NewIn - 0.7) / 0.3) * (1 - out))
-            }
-            .frame(width: DemoVideo.size.width)
-            .offset(y: 1115)
+                .scaleEffect(i == 0 || i == 3 ? 1 : 0.4 + 0.6 * grow)
+                .opacity((i == 0 || i == 3 ? 1 : min(max(grow * 1.6, 0), 1)) * (1 - out))
+            // The lesson, right under the new design (following it down as Memory opens).
+            Headline(text: item.lesson, size: 58, time: beat - Self.v6Morph - 0.3, leave: out)
+                .frame(width: DemoVideo.size.width)
+                .offset(y: Self.v6NewBottom(i, local) + 40)
         }
         .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
     }
@@ -237,10 +242,11 @@ extension DemoFrame {
     @ViewBuilder private func v6old(_ i: Int) -> some View {
         switch i {
         case 0: v6menuItem("thermometer.medium", "39°", caption: nil)
-        case 1: v6card(shots.beforePanel, v6rows(shots.beforePanel, 1746), Framing.fit(447, 795, centreY: 720, maxHeight: 500))
-        case 2: v6card(shots.beforeMemory, v6rows(shots.beforeMemory, 2144), Framing.fit(796, 1180, centreY: 720, maxHeight: 500))
+        case 1: v6card(shots.beforePanel, v6rows(shots.beforePanel, 1746), Framing.fit(447, 795, centreY: 780, maxHeight: 560, maxWidth: 1000))
+        case 2: v6card(shots.beforeMemory, v6rows(shots.beforeMemory, 2144), Framing.fit(796, 1180, centreY: 780, maxHeight: 560, maxWidth: 1000))
         default:
             Text("Not there.").font(.custom(DemoVideo.serif, size: 80)).italic().foregroundStyle(Color(white: 0.5))
+                .offset(y: 60)
         }
     }
 
@@ -254,7 +260,7 @@ extension DemoFrame {
                 v6menuItem("exclamationmark.triangle", "Memory full", caption: "a problem")
                     .scaleEffect(0.3 + 0.7 * second).opacity(min(max(second * 1.6, 0), 1))
             }
-        case 1: v6card(shots.panel, v6rows(shots.panel, 1142), Framing.fit(300, 478, centreY: 720, maxHeight: 500))
+        case 1: v6card(shots.panel, v6rows(shots.panel, 1142), Self.v6RowFraming)
         case 2:
             let f = Self.v6DetailFraming(local)
             let open = Self.v6ease((local - Self.v6DetailPointer(local).1 - 0.08) / 0.45)
@@ -262,8 +268,27 @@ extension DemoFrame {
                 .overlay {
                     v6card(shots.memory, v6rows(shots.memory, 1532), f).opacity(open > 0 ? 1 : 0)
                 }
-        default: v6card(shots.panel, v6rows(shots.panel, 1142), Framing.fit(470, 808, centreY: 720, maxHeight: 500))
+        default:
+            // The day's report writes itself out, top to bottom.
+            let f = Self.v6TodayFraming, r = f.rect
+            let written = Self.v6ease((beat - Self.v6Morph - 0.05) / 0.9)
+            v6card(shots.panel, v6rows(shots.panel, 1142), f)
+                .mask(alignment: .topLeading) {
+                    Rectangle().frame(width: DemoVideo.size.width, height: max(0, r.minY - 6 + (r.height + 12) * CGFloat(written)))
+                }
         }
+    }
+
+    private func v6tag(_ word: String, _ version: String, now: Bool) -> some View {
+        HStack(spacing: 14) {
+            if now { Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.green) }
+            Text(word).foregroundStyle(now ? Color.white : Color(white: 0.75))
+            Text(version).foregroundStyle(Color(white: now ? 0.75 : 0.5))
+        }
+        .font(.system(size: 46, weight: .semibold))
+        .padding(.horizontal, 34).frame(height: 84)
+        .background(Capsule().fill(now ? Color.green.opacity(0.2) : Color.white.opacity(0.1)))
+        .overlay(Capsule().strokeBorder(now ? Color.green.opacity(0.7) : Color.white.opacity(0.2), lineWidth: 2))
     }
 
     private func v6menuItem(_ symbol: String, _ text: String, caption: String?) -> some View {
@@ -282,6 +307,86 @@ extension DemoFrame {
                     .frame(width: 260, alignment: .leading)
             }
         }
-        .offset(y: -10)
+        .offset(y: 50)
+    }
+
+    // MARK: How it shipped, as a pipeline
+
+    /// The six steps as a delivery pipeline: a pulse runs down the line and each step passes as it arrives.
+    /// Testing holds the pulse until it passes; Ship then goes live.
+    static let v6StepReached: [Double] = [0.45, 0.8, 1.15, 2.25, 2.6, 2.95]
+    static let v6StepPassed: [Double] = [0.45, 0.8, 1.9, 2.25, 2.6, 2.95]
+
+    var process6: some View {
+        let local = v6Local, leave = v6Leaving
+        let steps = ["Scope", "Build", "Test on real data", "Ship", "Measure", "Improve"]
+        let x: CGFloat = 300, top: CGFloat = 380, gap: CGFloat = 118
+        let moves: [(Double, Double)] = [(0.5, 0.8), (0.85, 1.15), (1.95, 2.25), (2.3, 2.6), (2.65, 2.95)]
+        let y = top + gap * CGFloat(moves.map { v6in((local - $0.0) / ($0.1 - $0.0)) }.reduce(0, +))
+        let checking = local >= Self.v6StepReached[2] && local < Self.v6StepPassed[2]
+        return ZStack(alignment: .topLeading) {
+            Headline(text: "How it *shipped.*", size: 88, time: local + 0.3, leave: leave)
+                .frame(width: DemoVideo.size.width)
+                .offset(y: 150)
+            // The line, filling green behind the pulse.
+            Capsule().fill(Color.white.opacity(0.15)).frame(width: 6, height: gap * 5).offset(x: x - 3, y: top)
+            Capsule().fill(Color.green).frame(width: 6, height: y - top).offset(x: x - 3, y: top)
+            ForEach(0..<6, id: \.self) { n in
+                let ny = top + gap * CGFloat(n)
+                let passed = local >= Self.v6StepPassed[n]
+                let bump = passed ? sin(.pi * min(max((local - Self.v6StepPassed[n]) / 0.3, 0), 1)) : 0
+                ZStack {
+                    Circle().fill(passed ? Color.green : Color(white: 0.11))
+                    Circle().strokeBorder(passed ? Color.green : Color(white: 0.3), lineWidth: 4)
+                    if passed { Image(systemName: "checkmark").font(.system(size: 22, weight: .heavy)).foregroundStyle(.black) }
+                }
+                .frame(width: 48, height: 48)
+                .scaleEffect(1 + 0.25 * bump)
+                .offset(x: x - 24, y: ny - 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 16) {
+                        Text(String(format: "%02d", n + 1)).font(.system(size: 28, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(Color(white: 0.5))
+                        Text(steps[n]).font(.system(size: 46, weight: .medium)).foregroundStyle(.white)
+                        if n == 3 {
+                            let live = v6spring((local - Self.v6StepPassed[3] - 0.05) / 0.4)
+                            Text("live").font(.system(size: 28, weight: .bold)).foregroundStyle(.black)
+                                .padding(.horizontal, 18).frame(height: 44)
+                                .background(Capsule().fill(Color.green))
+                                .scaleEffect(0.5 + 0.5 * live).opacity(min(max(live * 1.6, 0), 1))
+                        }
+                    }
+                    if n == 2 {
+                        let pass = v6spring((local - Self.v6StepPassed[2]) / 0.4)
+                        ZStack(alignment: .leading) {
+                            Text("checking…").foregroundStyle(Color(white: 0.6)).opacity(checking ? 1 : 0)
+                            Label("passed", systemImage: "checkmark").foregroundStyle(Color.green)
+                                .scaleEffect(0.6 + 0.4 * pass, anchor: .leading).opacity(passed ? 1 : 0)
+                        }
+                        .font(.system(size: 28, weight: .semibold))
+                        .padding(.leading, 50)
+                    }
+                }
+                .fixedSize()
+                .opacity((0.3 + 0.7 * v6in((local - Self.v6StepReached[n] + 0.05) / 0.2)) * (1 - leave))
+                .offset(x: x + 50, y: ny - 30)
+            }
+            // The pulse, and the spinner while it waits on the test.
+            Circle().fill(Color.green).frame(width: 26, height: 26).shadow(color: Color.green.opacity(0.8), radius: 16)
+                .offset(x: x - 13, y: y - 13)
+                .opacity(local >= 0.4 ? 1 - v6in((local - 3.05) / 0.2) : 0)
+            Circle().trim(from: 0, to: 0.28).stroke(Color.green, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                .frame(width: 76, height: 76)
+                .rotationEffect(.degrees(local * 720))
+                .offset(x: x - 38, y: top + gap * 2 - 38)
+                .opacity(checking ? 1 : 0)
+            Text("Every release tested on real data before it went live.")
+                .font(.system(size: 30)).foregroundStyle(Color(white: 0.72))
+                .frame(width: DemoVideo.size.width)
+                .offset(y: 1110)
+                .opacity(v6in((local - 3.1) / 0.35) * (1 - leave))
+        }
+        .opacity(1 - leave)
+        .frame(width: DemoVideo.size.width, height: DemoVideo.size.height, alignment: .topLeading)
     }
 }
