@@ -1,9 +1,9 @@
 # DeskBar
 
-**Your Mac, at a glance, in the menu bar.** One click shows how your Mac is doing (heat, memory,
-disk, battery, network, what's plugged in), and a living 3D model of your MacBook reflects it.
-The lid follows your real lid, a MagSafe cable appears when you plug in, and your monitors
-appear when you connect them.
+**Is your Mac OK? One click answers in one sentence.** The panel says *All good*, or names the one
+thing that isn't, with the fix next to it. Under that: heat, memory, disk and battery, a short
+report on your day, and a living 3D model of your MacBook. The lid follows your real lid, a MagSafe
+cable appears when you plug in, and your monitors appear when you connect them.
 
 <p align="center">
   <img src="docs/images/panel-dark.png" width="300" alt="The DeskBar panel in dark mode">
@@ -19,6 +19,8 @@ approach:
 
 - **One glance answers "is everything OK?"** The top card says *All good*, or names the one thing
   that isn't: *Running hot*, *Memory full*, *Disk almost full*, *Offline*.
+- **A quiet menu bar.** A small MacBook when all's clear. Only when something needs you does it
+  show a warning and what it is.
 - **Detail only when you ask.** Every tile opens in place: per-core CPU, memory pressure, the apps
   using it, battery health.
 - **Things you'd otherwise dig for, one click away.** Focus, Keep awake, Hide desktop, Mute mic,
@@ -28,7 +30,9 @@ approach:
 
 | | |
 |---|---|
-| **Living Mac** | 3D MacBook that mirrors the real one: lid angle, charging, MagSafe, AirPods, camera and microphone in use. Zooms into the ports to show what's plugged into each, and switches to a desk view with your external monitors. |
+| **Verdict** | *All good*, or the one problem in plain English (*Memory full. Safari is using 6 GB.*) with the action next to it, such as Quit. |
+| **Today** | A short daily report from the local history: the busiest and hottest apps, data downloaded, and how today compares with your usual day. |
+| **Living Mac** | A thumbnail beside the verdict; click it for the full-size 3D MacBook that mirrors the real one: lid angle, charging, MagSafe, AirPods, camera and microphone in use. Zooms into the ports to show what's plugged into each, and switches to a desk view with your external monitors. |
 | **CPU** | Efficiency and performance cores, GPU, temperature, fan, uptime, and a short history. |
 | **Memory · Disk · Battery** | Memory pressure, free space and Downloads cleanup, power draw, charger wattage, battery health and cycles. |
 | **Wi-Fi & network** | Link speed, latency, live throughput, public IP, VPN. |
@@ -51,7 +55,7 @@ MacBook Pro.
 
 ### Download
 
-1. Download `DeskBar-1.0-macOS-AppleSilicon.zip` from the
+1. Download `DeskBar-1.1-macOS-AppleSilicon.zip` from the
    [latest release](https://github.com/Osman246/DeskBar/releases/latest) and unzip it.
 2. Drag **DeskBar.app** into **Applications**.
 3. Open it. DeskBar isn't notarised by Apple yet, so the first time macOS will say it can't check it.
@@ -78,11 +82,9 @@ own Mac.
 
 The 3D MacBook Pro is Apple's own model, the one behind *View in AR* on apple.com. It isn't this
 project's to redistribute, so it isn't in this repository. On first launch the panel shows a flat
-MacBook with a **Show in 3D** button. Clicking it downloads the model (10 MB) from apple.com into
+MacBook. Click it, then **Show in 3D**, which downloads the model (10 MB) from apple.com into
 `~/Library/Application Support/DeskBar/`. If you'd rather bundle it in your own build, put the file in
 `Models/macbook-pro-14-space-black.usdz` before running `build.sh`.
-
-<p align="center"><img src="docs/images/panel-flat-dark.png" width="260" alt="The panel before the 3D model is downloaded"></p>
 
 ## Privacy
 
@@ -107,7 +109,8 @@ A menu bar app should be invisible until you look at it. Rendering stops wheneve
 window are closed. Idle CPU sits around 0–1.5%, and the 3D view renders only while it's on screen.
 
 Every change is checked against a long-running build. That's how a slow leak in macOS's segmented
-control was found and designed out: it had pushed CPU to 50–100% after three days. The full story
+control was found and designed out: it had pushed CPU to 50–100% after three days. Launch is quick
+too: the 3D Mac's graphics are prepared in the background, so the first frame draws in about 30 ms. The full story
 is in [docs/PRODUCT.md](docs/PRODUCT.md#case-study-the-four-day-glitch).
 
 ## Development
@@ -116,7 +119,7 @@ is in [docs/PRODUCT.md](docs/PRODUCT.md#case-study-the-four-day-glitch).
 swift build                                              # debug build
 ./DeskBar.app/Contents/MacOS/DeskBar --snapshot out/     # renders the panel to PNGs, light and dark
 DESKBAR_DEMO=1 ./DeskBar.app/Contents/MacOS/DeskBar --snapshot docs/images   # shareable screenshots
-DESKBAR_DEMO=1 ./DeskBar.app/Contents/MacOS/DeskBar --snapshot out/ --demo-video --fonts <dir> [--credit "Built by …"] [--credit-note "…"]   # the one-minute demo video; <dir> holds EB Garamond (OFL)
+DESKBAR_DEMO=1 ./DeskBar.app/Contents/MacOS/DeskBar --snapshot out/ --demo-video --fonts <dir> [--credit "Built by …"] [--credit-note "…"]   # the demo video (--v6 for the 1.1 film, with --images and --before screenshot folders); <dir> holds EB Garamond (OFL)
 ```
 
 `--snapshot` modes render the real views offscreen. That's how every screenshot here was made, and
