@@ -46,6 +46,9 @@ final class StatusPanel: NSObject {
         let material = NSVisualEffectView()
         material.material = .popover
         material.state = .active
+        // The mask rounds the blur itself (and the window shadow traced from it); a layer corner
+        // radius alone left the blur's square corners faintly visible. The layer clips the content.
+        material.maskImage = .roundedMask(radius: 14)
         material.wantsLayer = true
         material.layer?.cornerRadius = 14
         material.layer?.masksToBounds = true
@@ -171,5 +174,20 @@ private struct DashboardOpener: View {
     var body: some View {
         Color.clear.frame(width: 1, height: 1)
             .onAppear { provide { openWindow(id: "dashboard") } }
+    }
+}
+
+private extension NSImage {
+    /// A stretchable rounded rectangle, for NSVisualEffectView.maskImage.
+    static func roundedMask(radius: CGFloat) -> NSImage {
+        let edge = radius * 2 + 1
+        let image = NSImage(size: NSSize(width: edge, height: edge), flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        image.resizingMode = .stretch
+        return image
     }
 }
