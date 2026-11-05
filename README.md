@@ -55,7 +55,7 @@ MacBook Pro.
 
 ### Download
 
-1. Download `DeskBar-1.1-macOS-AppleSilicon.zip` from the
+1. Download `DeskBar-1.1.1-macOS-AppleSilicon.zip` from the
    [latest release](https://github.com/Osman246/DeskBar/releases/latest) and unzip it.
 2. Drag **DeskBar.app** into **Applications**.
 3. Open it. DeskBar isn't notarised by Apple yet, so the first time macOS will say it can't check it.
