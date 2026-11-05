@@ -70,9 +70,7 @@ final class StatusPanel: NSObject {
     }
 
     func open() {
-        // Top-aligned: if the content grows before the window does, it extends downward rather than
-        // being centred (which pushed the whole panel up for a frame when a tile opened).
-        host.rootView = AnyView(Panel(model: model).frame(maxHeight: .infinity, alignment: .top))
+        host.rootView = AnyView(Panel(model: model))
         host.layoutSubtreeIfNeeded()
         place()
         // Like Apple's menu bar panels: take focus while open, so Escape and the shortcuts work.
@@ -151,13 +149,11 @@ final class MenuPanel: NSPanel {
 }
 
 /// Reports when its SwiftUI content changes size, so the panel can grow and shrink with it.
-/// It resizes in the same pass, not on the next turn of the run loop, so the window and its
-/// content never disagree for a frame.
 final class ResizingHostingView<Content: View>: NSHostingView<Content> {
     var onResize: (() -> Void)?
     override func invalidateIntrinsicContentSize() {
         super.invalidateIntrinsicContentSize()
-        onResize?()
+        DispatchQueue.main.async { [weak self] in self?.onResize?() }
     }
 }
 
