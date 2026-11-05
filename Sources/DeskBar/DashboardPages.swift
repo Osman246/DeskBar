@@ -255,6 +255,8 @@ struct MemoryPage: View {
                         Text(Format.bytes(user.bytes)).foregroundStyle(.secondary).monospacedDigit().frame(width: 80, alignment: .trailing)
                         if let app = user.app, app.processIdentifier != getpid() {
                             Button("Quit") { app.terminate() }.controlSize(.small)
+                        } else if user.app?.processIdentifier == getpid() {
+                            Text("This app").font(.caption).foregroundStyle(.secondary).frame(width: 44)
                         } else {
                             Color.clear.frame(width: 44, height: 1)
                         }

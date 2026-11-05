@@ -10,6 +10,7 @@
     <key>CFBundleShortVersionString</key><string>1.1.1</string>
     <key>CFBundleVersion</key><string>3</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>LSUIElement</key><true/>
     <key>NSLocationUsageDescription</key><string>macOS only shares your Wi-Fi network's name with apps that have Location access. DeskBar doesn't use your location.</string>
     <key>NSLocationWhenInUseUsageDescription</key><string>macOS only shares your Wi-Fi network's name with apps that have Location access. DeskBar doesn't use your location.</string>

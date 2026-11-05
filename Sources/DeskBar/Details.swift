@@ -66,6 +66,9 @@ struct AppUsageRow: View {
                             .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
+                } else if pid == getpid() {
+                    // DeskBar's own row: say what it is rather than offer to quit the panel you're using.
+                    Text("This app").font(.system(size: 11)).foregroundStyle(Color.secondaryText)
                 }
             }
             Bar(fraction: fraction, tint: Color.primary.opacity(0.45), height: 3).padding(.leading, 22)

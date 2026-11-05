@@ -1,3 +1,5 @@
+<img src="docs/images/icon.png" width="96" alt="The DeskBar icon: a MacBook whose screen shows a green check">
+
 # DeskBar
 
 **Is your Mac OK? One click answers in one sentence.** The panel says *All good*, or names the one

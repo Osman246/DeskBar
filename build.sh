@@ -8,6 +8,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/DeskBar "$APP/Contents/MacOS/"
 cp Info.plist "$APP/Contents/"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 # Apple's 3D MacBook Pro model isn't in the repository (it's Apple's, for personal use). If you've
 # put a copy in Models/ it's bundled; otherwise DeskBar offers to download it from apple.com.
 if [ -f Models/macbook-pro-14-space-black.usdz ]; then
