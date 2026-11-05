@@ -3,10 +3,11 @@ import CoreLocation
 import CoreWLAN
 import Foundation
 import IOKit.ps
+import Network
 import Sensors
 
 /// Live readings shown in the panel. Fast values refresh every 2 s, network checks
-/// (ping) every 10 s, Bluetooth every minute and the public IP every 10 minutes.
+/// (latency) every 10 s, Bluetooth every minute and the public IP every 10 minutes.
 @MainActor
 final class Stats: NSObject, ObservableObject, CLLocationManagerDelegate {
     struct Battery {
@@ -346,13 +347,48 @@ final class Stats: NSObject, ObservableObject, CLLocationManagerDelegate {
         return total > 0 ? busy / total * 100 : nil
     }
 
-    /// Round trip to Cloudflare's DNS server, as a rough "is the internet fast" check.
+    /// Round trip to Cloudflare's DNS server, as a rough "is the internet fast" check. Timed as a
+    /// TCP handshake on port 443, not a ping: some networks drop pings to 1.1.1.1 while the
+    /// internet works, and DeskBar then said "No internet".
     private static func ping() async -> Int? {
-        let output = await Shell.run("/sbin/ping", ["-c", "1", "-t", "2", "1.1.1.1"])
-        guard let range = output.range(of: #"time=([\d.]+)"#, options: .regularExpression) else { return nil }
-        return Double(output[range].dropFirst(5)).map { Int($0.rounded()) }
+        for host in ["1.1.1.1", "1.0.0.1"] {
+            if let ms = await handshake(host) { return ms }
+        }
+        return nil
     }
 
+    private static func handshake(_ host: String) async -> Int? {
+        await withCheckedContinuation { done in
+            let queue = DispatchQueue(label: "DeskBar.handshake")
+            let connection = NWConnection(host: NWEndpoint.Host(host), port: 443, using: .tcp)
+            let start = DispatchTime.now().uptimeNanoseconds
+            let once = Once()
+            @Sendable func finish(_ ms: Int?) {
+                guard once.first() else { return }
+                connection.cancel()
+                done.resume(returning: ms)
+            }
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready: finish(Int((Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6).rounded()))
+                case .failed, .waiting: finish(nil)
+                default: break
+                }
+            }
+            connection.start(queue: queue)
+            queue.asyncAfter(deadline: .now() + 2) { finish(nil) }
+        }
+    }
+
+}
+
+/// True the first time only. Used on a single serial queue, so it needs no lock.
+private final class Once: @unchecked Sendable {
+    private var used = false
+    func first() -> Bool {
+        defer { used = true }
+        return !used
+    }
 }
 
 private func openLink(_ link: String) {

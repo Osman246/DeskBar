@@ -93,7 +93,7 @@ analytics and no tracking. It only goes online for these:
 
 | What | Where | When |
 |---|---|---|
-| Latency | `ping` to 1.1.1.1 | every 10 s |
+| Latency | a TCP connection to 1.1.1.1 (port 443) | every 10 s |
 | Public IP | api.ipify.org | every 10 minutes, or when you change network |
 | Speed test | Apple's `networkQuality` servers | only when you run one |
 | 3D model | apple.com | only when you click *Show in 3D* |
