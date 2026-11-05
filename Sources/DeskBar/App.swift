@@ -146,8 +146,10 @@ struct Panel: View {
             }
             .frame(width: 340, height: min(contentHeight, maxHeight))
             .onPreferenceChange(ContentHeight.self) { height in
-                // Grow and shrink with the same spring the parts use, so the panel unrolls smoothly.
-                withAnimation(.spring(response: 0.55, dampingFraction: 0.9)) { contentHeight = height }
+                // At once, not animated: the window takes the new height straight away, and a frame
+                // still animating inside it was centred, so the panel's top slid when a tile opened.
+                // The parts themselves still animate in.
+                contentHeight = height
             }
         }
     }

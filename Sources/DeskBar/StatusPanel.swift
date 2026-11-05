@@ -49,13 +49,15 @@ final class StatusPanel: NSObject {
         material.wantsLayer = true
         material.layer?.cornerRadius = 14
         material.layer?.masksToBounds = true
+        // The content hangs from the top edge at its own height, and place() sizes the window to it.
+        // (Pinned to all four edges, a frame where the two sizes disagreed centred the content,
+        // so the top of the panel jumped.)
         host.translatesAutoresizingMaskIntoConstraints = false
         material.addSubview(host)
         NSLayoutConstraint.activate([
             host.leadingAnchor.constraint(equalTo: material.leadingAnchor),
             host.trailingAnchor.constraint(equalTo: material.trailingAnchor),
             host.topAnchor.constraint(equalTo: material.topAnchor),
-            host.bottomAnchor.constraint(equalTo: material.bottomAnchor),
         ])
         panel.contentView = material
 
