@@ -115,7 +115,12 @@ final class StatusPanel: NSObject {
         var x = anchor.midX - size.width / 2
         x = min(max(x, screen.minX + 8), screen.maxX - size.width - 8)
         let top = anchor.minY - 6
-        panel.setFrame(NSRect(x: x, y: top - size.height, width: size.width, height: size.height), display: true)
+        let frame = NSRect(x: x, y: top - size.height, width: size.width, height: size.height)
+        guard frame != panel.frame else { return }
+        panel.setFrame(frame, display: true)
+        // A borderless window's shadow is traced from what it draws and isn't redone on a resize, so
+        // without this the shadow keeps the old size, and its square corners show past the rounded ones.
+        DispatchQueue.main.async { [weak self] in self?.panel.invalidateShadow() }
     }
 
     private var shownLabel = ""
