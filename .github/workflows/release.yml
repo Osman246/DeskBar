@@ -15,7 +15,7 @@ jobs:
   release:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check the tag matches Info.plist
         run: |
           VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Info.plist)
@@ -33,7 +33,7 @@ jobs:
           # Apple's 3D model must never ship in a release.
           if unzip -l "$ZIP" | grep -qi '\.usdz'; then echo "::error::The zip contains a .usdz"; exit 1; fi
           shasum -a 256 "$ZIP" | tee "$ZIP.sha256"
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ env.ZIP }}
       - name: Attach to the release
