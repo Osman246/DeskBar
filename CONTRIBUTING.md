@@ -29,6 +29,10 @@ answer a real question someone has about their Mac. Open an issue before buildin
 - **Avoid `.pickerStyle(.segmented)` in content that updates often.** Use `Segments` instead (see
   docs/PRODUCT.md for why).
 
+## Changelog
+
+Add a line under **Unreleased** in [CHANGELOG.md](CHANGELOG.md) for anything a user would notice.
+
 ## Style
 
 Match the code around you. Keep comments short, saying why rather than what, and write UI text in

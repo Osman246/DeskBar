@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas to talk through
+    url: https://github.com/Osman246/DeskBar/discussions
+    about: Ask how something works, or chat about an idea before filing it.
+  - name: Report a security problem
+    url: https://github.com/Osman246/DeskBar/security/advisories/new
+    about: Please report security problems privately, not as an issue.

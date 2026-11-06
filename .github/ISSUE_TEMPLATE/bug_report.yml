@@ -1,0 +1,41 @@
+name: Bug report
+description: Something in DeskBar is wrong or broken.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect instead? A screenshot helps (run DeskBar with `DESKBAR_DEMO=1` if you'd rather not show your IP address or Mac's name).
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we see it too?
+      placeholder: |
+        1. Open the panel
+        2. Click the Memory tile
+        3. …
+  - type: input
+    id: version
+    attributes:
+      label: DeskBar version
+      description: In the window, or in Finder under Get Info.
+      placeholder: "1.1.2"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "macOS 26.1"
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: Mac model
+      placeholder: "14-inch MacBook Pro, M4"
+    validations:
+      required: true

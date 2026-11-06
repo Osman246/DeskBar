@@ -130,12 +130,15 @@ DESKBAR_DEMO=1 ./DeskBar.app/Contents/MacOS/DeskBar --snapshot docs/images   # s
 DESKBAR_DEMO=1 ./DeskBar.app/Contents/MacOS/DeskBar --snapshot out/ --demo-video --fonts <dir> [--credit "Built by …"] [--credit-note "…"]   # the demo video (--v6 for the 1.1 film, with --images and --before screenshot folders); <dir> holds EB Garamond (OFL)
 ```
 
-`--snapshot` modes render the real views offscreen. That's how every screenshot here was made, and
+The demo film's code is in `Sources/DeskBar/DemoFilm`, apart from the app itself. `--snapshot` modes render the real views offscreen. That's how every screenshot here was made, and
 how visual changes are checked without clicking through the app. `DESKBAR_DEMO=1` swaps in a
 placeholder IP address and a generic Mac name.
 
 Every push and pull request is built and tested by [CI](.github/workflows/ci.yml). Releases are
 built by [the release workflow](.github/workflows/release.yml) when a version tag is pushed.
+
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md). To report a security problem, see
+[SECURITY.md](SECURITY.md).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and the product thinking behind it in
 [docs/PRODUCT.md](docs/PRODUCT.md).
