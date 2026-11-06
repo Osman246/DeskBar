@@ -1,0 +1,25 @@
+# Builds the app and runs the tests on every push to main and every pull request.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: swift test
+      - name: Build the app
+        run: ./build.sh
+      - name: Check the app bundle
+        run: |
+          test -x DeskBar.app/Contents/MacOS/DeskBar
+          test -f DeskBar.app/Contents/Resources/AppIcon.icns
+          codesign --verify DeskBar.app

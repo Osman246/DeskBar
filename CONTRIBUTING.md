@@ -15,6 +15,9 @@ answer a real question someone has about their Mac. Open an issue before buildin
 
 ## Checking your change
 
+- **Run the tests:** `swift test`. They cover the verdict, the rules that decide between *All good*
+  and the one thing that isn't. If you change when a problem appears or what it says, change the
+  test with it. CI runs them on every pull request, and `main` only takes changes that pass.
 - **Visual changes:** render the panel offscreen and look at the PNGs.
   ```bash
   ./DeskBar.app/Contents/MacOS/DeskBar --snapshot out/

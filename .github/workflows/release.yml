@@ -1,0 +1,48 @@
+# Pushing a version tag (v1.2, v1.2.1, …) builds the release zip here, from that exact commit, and
+# attaches it to a draft release with its SHA-256 and a build attestation. Edit the notes, then publish.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write       # create the release and upload the zip
+  id-token: write       # sign the build attestation
+  attestations: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches Info.plist
+        run: |
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Info.plist)
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match Info.plist version $VERSION"; exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "ZIP=DeskBar-$VERSION-macOS-AppleSilicon.zip" >> "$GITHUB_ENV"
+      - name: Test
+        run: swift test
+      - name: Build and zip
+        run: |
+          ./build.sh
+          ditto -c -k --keepParent DeskBar.app "$ZIP"
+          # Apple's 3D model must never ship in a release.
+          if unzip -l "$ZIP" | grep -qi '\.usdz'; then echo "::error::The zip contains a .usdz"; exit 1; fi
+          shasum -a 256 "$ZIP" | tee "$ZIP.sha256"
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ env.ZIP }}
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$ZIP" "$ZIP.sha256" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$ZIP" "$ZIP.sha256" --draft --verify-tag \
+              --title "DeskBar $VERSION" --generate-notes
+          fi

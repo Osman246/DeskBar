@@ -2,6 +2,8 @@
 
 # DeskBar
 
+[![CI](https://github.com/Osman246/DeskBar/actions/workflows/ci.yml/badge.svg)](https://github.com/Osman246/DeskBar/actions/workflows/ci.yml)
+
 **Is your Mac OK? One click answers in one sentence.** The panel says *All good*, or names the one
 thing that isn't, with the fix next to it. Under that: heat, memory, disk and battery, a short
 report on your day, and a living 3D model of your MacBook. The lid follows your real lid, a MagSafe
@@ -64,6 +66,9 @@ MacBook Pro.
    Click **Done**, then go to **System Settings → Privacy & Security** and click **Open Anyway** next
    to DeskBar. You only need to do this once.
 
+Every release zip is built by GitHub Actions from the tagged commit, not on someone's laptop. To check
+yours came from this repository, run `gh attestation verify DeskBar-*.zip --repo Osman246/DeskBar`.
+
 DeskBar appears in your menu bar. It has no Dock icon until you open its window.
 
 ### Build it yourself
@@ -119,6 +124,7 @@ is in [docs/PRODUCT.md](docs/PRODUCT.md#case-study-the-four-day-glitch).
 
 ```bash
 swift build                                              # debug build
+swift test                                               # the verdict's rules (needs Xcode, not just the Command Line Tools)
 ./DeskBar.app/Contents/MacOS/DeskBar --snapshot out/     # renders the panel to PNGs, light and dark
 DESKBAR_DEMO=1 ./DeskBar.app/Contents/MacOS/DeskBar --snapshot docs/images   # shareable screenshots
 DESKBAR_DEMO=1 ./DeskBar.app/Contents/MacOS/DeskBar --snapshot out/ --demo-video --fonts <dir> [--credit "Built by …"] [--credit-note "…"]   # the demo video (--v6 for the 1.1 film, with --images and --before screenshot folders); <dir> holds EB Garamond (OFL)
@@ -127,6 +133,9 @@ DESKBAR_DEMO=1 ./DeskBar.app/Contents/MacOS/DeskBar --snapshot out/ --demo-video
 `--snapshot` modes render the real views offscreen. That's how every screenshot here was made, and
 how visual changes are checked without clicking through the app. `DESKBAR_DEMO=1` swaps in a
 placeholder IP address and a generic Mac name.
+
+Every push and pull request is built and tested by [CI](.github/workflows/ci.yml). Releases are
+built by [the release workflow](.github/workflows/release.yml) when a version tag is pushed.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and the product thinking behind it in
 [docs/PRODUCT.md](docs/PRODUCT.md).

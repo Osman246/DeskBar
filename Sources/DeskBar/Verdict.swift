@@ -17,7 +17,31 @@ struct Problem: Equatable {
     var detailLabel: String? = nil
 }
 
+/// The readings the verdict is decided from, copied out of `Stats` so the rules can be tested
+/// without live sensors.
+struct Readings {
+    var cpuTemp: Double? = nil
+    var battery: Stats.Battery? = nil
+    var memory: Readers.Memory? = nil
+    var memoryUsers: [TopAppTracker.MemoryUser] = []
+    var cpuUsers: [TopAppTracker.CPUUser] = []
+    var storage: (free: Int64, total: Int64)? = nil
+    var thermal: ProcessInfo.ThermalState = .nominal
+    var wifi = Stats.WiFi(on: true, name: nil, linkMbps: 0, signal: -50)
+    var pingMs: Int? = 10
+}
+
 extension Stats {
+    var readings: Readings {
+        Readings(cpuTemp: cpuTemp, battery: battery, memory: memory, memoryUsers: memoryUsers, cpuUsers: cpuUsers,
+                 storage: storage, thermal: thermal, wifi: wifi, pingMs: pingMs)
+    }
+
+    /// Everything that needs you right now, most urgent first.
+    var problems: [Problem] { readings.problems }
+}
+
+extension Readings {
     /// Everything that needs you right now, most urgent first.
     var problems: [Problem] {
         var list: [Problem] = []
@@ -25,7 +49,7 @@ extension Stats {
             list.append(cpuProblem(title: "Your Mac is running hot", word: "Running hot"))
         }
         if let b = battery, b.percent <= 20, !b.onPower {
-            let reason = b.minutesLeft.map { "About \(Self.duration($0)) left" } ?? "\(b.percent)% left"
+            let reason = b.minutesLeft.map { "About \(Stats.duration($0)) left" } ?? "\(b.percent)% left"
             list.append(Problem(title: "Battery is low", word: "Low battery", reason: reason,
                                 detail: "battery", detailLabel: "Battery details"))
         }
@@ -35,8 +59,8 @@ extension Stats {
             if let top = memoryUsers.first {
                 problem = Problem(title: problem.title, word: problem.word,
                                   reason: "\(top.name) is using \(Format.bytes(top.bytes))",
-                                  fixLabel: Self.canQuit(top.app) ? "Quit \(top.name)" : nil,
-                                  fix: Self.canQuit(top.app) ? .quit(top.pid) : nil,
+                                  fixLabel: Stats.canQuit(top.app) ? "Quit \(top.name)" : nil,
+                                  fix: Stats.canQuit(top.app) ? .quit(top.pid) : nil,
                                   detail: "memory", detailLabel: "See all apps")
             }
             list.append(problem)
@@ -68,20 +92,22 @@ extension Stats {
                            detail: "cpu", detailLabel: "See CPU")
         }
         return Problem(title: title, word: word, reason: "\(top.name) is working hardest",
-                       fixLabel: Self.canQuit(top.app) ? "Quit \(top.name)" : nil,
-                       fix: Self.canQuit(top.app) ? .quit(top.pid) : nil,
+                       fixLabel: Stats.canQuit(top.app) ? "Quit \(top.name)" : nil,
+                       fix: Stats.canQuit(top.app) ? .quit(top.pid) : nil,
                        detail: "cpu", detailLabel: "See CPU")
     }
+}
 
+extension Stats {
     /// Only ordinary apps get a Quit button (never Finder or a background process).
     /// Demo mode shows the button on its made-up apps.
-    static func canQuit(_ app: NSRunningApplication?) -> Bool {
+    nonisolated static func canQuit(_ app: NSRunningApplication?) -> Bool {
         if Demo.on { return true }
         guard let app else { return false }
         return app.activationPolicy == .regular && app.bundleIdentifier != "com.apple.finder"
     }
 
-    static func duration(_ minutes: Int) -> String {
+    nonisolated static func duration(_ minutes: Int) -> String {
         minutes >= 60 ? "\(minutes / 60) h \(minutes % 60) m" : "\(minutes) min"
     }
 }
