@@ -1,7 +1,7 @@
 # Code of conduct
 
-DeskBar is a small project, and everyone who takes part in it (in issues, pull requests,
-discussions and reviews) should be able to do so without being made to feel unwelcome.
+DeskBar is a small project, and I want everyone who takes part in it (in issues, pull requests,
+discussions and reviews) to be able to do so without being made to feel unwelcome.
 
 ## What's expected
 
@@ -22,13 +22,13 @@ discussions and reviews) should be able to do so without being made to feel unwe
 ## Reporting
 
 If someone breaks this code, open the menu (**···**) on their comment, issue or pull request, choose
-**Report content**, then **Report to repository admins**. The report goes privately to the
-maintainer. Reports are read within a week and kept confidential.
+**Report content**, then **Report to repository admins**. The report comes privately to me. I read
+every report within a week and keep it confidential.
 
 ## What happens
 
-Depending on how serious it is, the maintainer may hide or edit the content, give a warning, or
-block someone from the project. A serious or repeated breach can mean a permanent block straight
+Depending on how serious it is, I may hide or edit the content, give a warning, or block someone
+from the project. A serious or repeated breach can mean a permanent block straight
 away.
 
 This code applies everywhere in this repository, and to anyone representing the project elsewhere.
