@@ -1,0 +1,12 @@
+# Opens a pull request when an action used by the workflows has a new version. CI tests it before merging.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "CI"
