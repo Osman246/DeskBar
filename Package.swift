@@ -9,6 +9,8 @@ let package = Package(
                 linkerSettings: [.linkedFramework("IOKit"), .linkedFramework("CoreFoundation")]),
         .executableTarget(name: "DeskBar", dependencies: ["Sensors"], path: "Sources/DeskBar",
                           swiftSettings: [.swiftLanguageMode(.v5)],
-                          linkerSettings: [.linkedFramework("CoreWLAN"), .linkedFramework("IOKit"), .linkedFramework("CoreMediaIO")])
+                          linkerSettings: [.linkedFramework("CoreWLAN"), .linkedFramework("IOKit"), .linkedFramework("CoreMediaIO")]),
+        .testTarget(name: "DeskBarTests", dependencies: ["DeskBar"], path: "Tests/DeskBarTests",
+                    swiftSettings: [.swiftLanguageMode(.v5)])
     ]
 )
